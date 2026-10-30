@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yer sayyorasi</title>
+<style>
+  html,body{margin:0;height:100%;background:#02030a;overflow:hidden;font-family:system-ui,sans-serif;color:#d7e6ff;touch-action:none;user-select:none;-webkit-user-select:none}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #pip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:108px;height:144px;border-radius:12px;overflow:hidden;border:1px solid #ffffff30;background:#000;display:none}
+  #cam{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #sk{position:absolute;inset:0;width:100%;height:100%}
+  #hud{position:fixed;left:12px;top:calc(10px + env(safe-area-inset-top,0px));font-size:12px;opacity:.7}
+  #msg{position:fixed;left:0;right:0;top:12%;text-align:center;font-size:16px;padding:0 20px;pointer-events:none;text-shadow:0 0 8px #000}
+  #tip{position:fixed;left:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:calc(100% - 150px);font-size:12px;line-height:1.55;opacity:.75;pointer-events:none}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#02030af2;text-align:center;padding:24px}
+  #start p{max-width:340px;margin:0;line-height:1.6;opacity:.85;font-size:14px}
+  button{font-size:18px;font-weight:700;padding:14px 28px;border:0;border-radius:12px;background:#7dc4ff;color:#012}
+  button.alt{background:#16243d;color:#d7e6ff}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "@mediapipe/tasks-vision":"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"}}
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="pip"><video id="cam" playsinline muted></video><canvas id="sk" width="216" height="288"></canvas></div>
+<div id="hud"></div>
+<div id="msg">Yer yuklanmoqda…</div>
+<div id="tip"></div>
+<div id="start">
+  <h2 style="margin:0">Yer sayyorasi 🌍</h2>
+  <p>✊ Musht qiling — Yerni ushlab aylantirasiz.<br>🖐 Ochiq qo'lni tez siltang — o'zi aylanib ketadi.<br>Qo'l kameraga yaqin / uzoq — kattalashadi / kichrayadi.</p>
+  <button id="go">Kamerani yoqish</button>
+  <button id="touch" class="alt">Faqat teginish bilan</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+const $ = (id) => document.getElementById(id);
+const TEX = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/textures/planets/';
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+class OneEuro {
+  constructor(minCutoff, beta) { this.m = minCutoff; this.b = beta; this.x = null; this.dx = 0; }
+  static a(c, dt) { const tau = 1 / (2 * Math.PI * c); return 1 / (1 + tau / dt); }
+  filter(v, dt) {
+    if (this.x === null) return (this.x = v);
+    this.dx += OneEuro.a(1, dt) * ((v - this.x) / dt - this.dx);
+    this.x += OneEuro.a(this.m + this.b * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+
+// ---------- sahna ----------
+const cv = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+renderer.setClearColor(0x02030a);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+function resize() {
+  const W = innerWidth, H = innerHeight;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  const need = 2.7, vh = camera.aspect < 1 ? need / camera.aspect : need;
+  camera.position.z = vh / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+scene.add(new THREE.DirectionalLight(0xffffff, 3.4).translateX(3).translateY(1.2).translateZ(4));
+scene.add(new THREE.AmbientLight(0x5a78b0, 1.0));
+
+const holder = new THREE.Group(); scene.add(holder);
+const globe = new THREE.Group(); holder.add(globe);
+globe.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.41);
+
+const earthMat = new THREE.MeshLambertMaterial({ color: 0x1b3a6b });
+globe.add(new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), earthMat));
+let clouds = null;
+
+function fakeEarth() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#14356b'; g.fillRect(0, 0, 1024, 512);
+  g.fillStyle = '#2f7d3c';
+  for (let i = 0; i < 60; i++) { g.beginPath(); g.ellipse(Math.random() * 1024, 60 + Math.random() * 392, 20 + Math.random() * 70, 12 + Math.random() * 40, Math.random() * 3, 0, 7); g.fill(); }
+  g.fillStyle = '#eef'; g.fillRect(0, 0, 1024, 26); g.fillRect(0, 486, 1024, 26);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const loader = new THREE.TextureLoader();
+loader.load(TEX + 'earth_atmos_2048.jpg', (t) => {
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 2;
+  earthMat.map = t; earthMat.color.set(0xffffff); earthMat.needsUpdate = true;
+  if (!camMode) $('msg').textContent = '';
+}, undefined, () => {
+  earthMat.map = fakeEarth(); earthMat.color.set(0xffffff); earthMat.needsUpdate = true;
+  $('msg').textContent = "Yer rasmi yuklanmadi (oddiy shakl ko'rsatilmoqda)";
+});
+loader.load(TEX + 'earth_clouds_1024.png', (t) => {
+  t.colorSpace = THREE.SRGBColorSpace;
+  clouds = new THREE.Mesh(new THREE.SphereGeometry(1.012, 48, 32),
+    new THREE.MeshLambertMaterial({ map: t, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+  globe.add(clouds);
+});
+
+holder.add(new THREE.Mesh(new THREE.SphereGeometry(1.16, 40, 24), new THREE.ShaderMaterial({
+  vertexShader: 'varying vec3 n;void main(){n=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+  fragmentShader: 'varying vec3 n;void main(){float i=pow(0.55-dot(n,vec3(0.0,0.0,1.0)),4.0);gl_FragColor=vec4(0.25,0.55,1.0,1.0)*min(i,1.0);}',
+  side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+})));
+
+{
+  const p = new Float32Array(900), v = new THREE.Vector3();
+  for (let i = 0; i < 300; i++) { v.randomDirection().multiplyScalar(40); p.set([v.x, v.y, v.z], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xaabbff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.7 })));
+}
+
+// ---------- harakat ----------
+const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), dq = new THREE.Quaternion();
+function rot(yaw, pitch) {
+  if (yaw) globe.quaternion.premultiply(dq.setFromAxisAngle(AY, yaw));
+  if (pitch) globe.quaternion.premultiply(dq.setFromAxisAngle(AX, pitch));
+  globe.quaternion.normalize();
+}
+const omega = { x: 0, y: 0 };
+const ctl = { hand: false, grab: false, wx: 0, wy: 0 };
+let scale = 1, scaleT = 1, camMode = false, touching = false;
+
+let last = performance.now(), fpsAcc = 0, fpsN = 0, det = 0, lastHud = last;
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  if (!touching) {
+    if (ctl.grab) {
+      const k = 1 - Math.exp(-14 * dt);
+      omega.x += (ctl.wx - omega.x) * k; omega.y += (ctl.wy - omega.y) * k;
+    } else {
+      const f = Math.exp(-1.5 * dt); omega.x *= f; omega.y *= f;
+    }
+    const idle = ctl.hand ? 0 : 0.15;
+    rot((omega.y + idle) * dt, omega.x * dt);
+  }
+  if (clouds) clouds.rotation.y += 0.015 * dt;
+  scale += (scaleT - scale) * (1 - Math.exp(-6 * dt));
+  holder.scale.setScalar(scale);
+  renderer.render(scene, camera);
+
+  fpsAcc += 1 / Math.max(dt, 1e-3); fpsN++;
+  if (now - lastHud > 500) {
+    $('hud').textContent = `${(fpsAcc / fpsN).toFixed(0)} fps` + (camMode ? ` · qo'l: ${(det * 2).toFixed(0)} Hz` : '');
+    fpsAcc = fpsN = det = 0; lastHud = now;
+  }
+}
+requestAnimationFrame(loop);
+
+// ---------- teginish ----------
+const ptrs = new Map(); let pinch0 = null;
+cv.addEventListener('pointerdown', (e) => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+  touching = true; omega.x = omega.y = 0;
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: scaleT }; }
+});
+cv.addEventListener('pointermove', (e) => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const now = performance.now(), dtm = Math.max((now - p.t) / 1000, 0.008);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY; p.t = now;
+  if (ptrs.size === 2 && pinch0) {
+    const [a, b] = [...ptrs.values()];
+    scaleT = clamp(pinch0.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch0.d, 0.5, 2.2);
+  } else if (ptrs.size === 1) {
+    const k = 3.2 / Math.min(innerWidth, innerHeight);
+    rot(dx * k, dy * k);
+    omega.y += (dx * k / dtm - omega.y) * 0.4; omega.x += (dy * k / dtm - omega.x) * 0.4;
+  }
+});
+const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; if (!ptrs.size) touching = false; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', (e) => { scaleT = clamp(scaleT * (e.deltaY > 0 ? 0.92 : 1.08), 0.5, 2.2); }, { passive: true });
+
+// ---------- qo'l kuzatuvi ----------
+const PALM = [0, 5, 9, 13, 17], TIPS = [4, 8, 12, 16, 20];
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+function openness(w) {
+  const c = { x: 0, y: 0, z: 0 };
+  for (const i of PALM) { c.x += w[i].x / 5; c.y += w[i].y / 5; c.z += w[i].z / 5; }
+  let s = 0; for (const i of TIPS) s += d3(w[i], c);
+  return s / 5 / d3(w[0], w[9]);
+}
+const GAIN = 3.5, FLICK = 1.8, FLG = 2.0;
+const video = $('cam'), sk = $('sk').getContext('2d');
+
+function drawHand(l) {
+  sk.clearRect(0, 0, 216, 288);
+  if (!l) return;
+  const s = Math.max(216 / video.videoWidth, 288 / video.videoHeight), dw = video.videoWidth * s, dh = video.videoHeight * s;
+  const P = l.map((p) => ({ x: (216 - dw) / 2 + (1 - p.x) * dw, y: (288 - dh) / 2 + p.y * dh }));
+  sk.strokeStyle = sk.fillStyle = 'rgba(125,196,255,.9)'; sk.lineWidth = 2; sk.beginPath();
+  for (const [a, b] of BONES) { sk.moveTo(P[a].x, P[a].y); sk.lineTo(P[b].x, P[b].y); }
+  sk.stroke();
+  for (const p of P) { sk.beginPath(); sk.arc(p.x, p.y, 3, 0, 7); sk.fill(); }
+}
+
+function track(hl) {
+  const fx = new OneEuro(1.5, 0.02), fy = new OneEuro(1.5, 0.02), fs = new OneEuro(0.8, 0.005);
+  let prev = null, prevT = 0, seen = 0, grab = false, cost = 25, nextAt = 0;
+
+  function handle(r, now) {
+    const l = r.landmarks[0], w = r.worldLandmarks[0];
+    if (!l) {
+      drawHand(null);
+      if (ctl.hand && now - seen > 400) { ctl.hand = false; ctl.grab = false; grab = false; prev = null; scaleT = 1; $('msg').textContent = "Qo'lingizni kameraga ko'rsating"; }
+      return;
+    }
+    $('msg').textContent = '';
+    seen = now;
+    const dt = Math.max(0.02, (now - prevT) / 1000); prevT = now;
+    const asp = video.videoWidth / video.videoHeight;
+    let cx = 0, cy = 0; for (const i of PALM) { cx += l[i].x / 5; cy += l[i].y / 5; }
+    const x = fx.filter(1 - cx, dt), y = fy.filter(cy, dt);
+    const size = fs.filter(Math.hypot((l[0].x - l[9].x) * asp, l[0].y - l[9].y), dt);
+
+    const o = openness(w), was = grab;
+    if (grab) { if (o > 0.9) grab = false; } else if (o < 0.75) grab = true;
+    if (grab && !was) { ctl.wx = ctl.wy = 0; }
+
+    if (prev) {
+      const vx = ((x - prev.x) * asp) / dt, vy = (y - prev.y) / dt;
+      if (grab && prev.grab) { ctl.wy = vx * GAIN; ctl.wx = vy * GAIN; }
+      else if (!grab && Math.hypot(vx, vy) > FLICK) {
+        omega.y += (vx * FLG - omega.y) * 0.6; omega.x += (vy * FLG - omega.x) * 0.6;
+      }
+    }
+    ctl.grab = grab; ctl.hand = true; prev = { x, y, grab };
+    scaleT = 0.55 + 1.5 * smooth(0.15, 0.5, size);
+    drawHand(l);
+  }
+
+  const next = video.requestVideoFrameCallback ? (f) => video.requestVideoFrameCallback(f) : (f) => requestAnimationFrame(f);
+  const onFrame = () => {
+    const now = performance.now();
+    if (video.videoWidth && now >= nextAt) {
+      const r = hl.detectForVideo(video, now);
+      const t1 = performance.now();
+      cost += (t1 - now - cost) * 0.3;
+      // aniqlash asosiy oqimning ko'pi bilan ~yarmini egallasin: Yer silliq aylanaveradi
+      nextAt = t1 + Math.max(50, cost * 2);
+      det++;
+      handle(r, t1);
+    }
+    next(onFrame);
+  };
+  next(onFrame);
+}
+
+async function startCamera() {
+  camMode = true;
+  $('pip').style.display = 'block';
+  $('msg').textContent = 'Model yuklanmoqda…';
+  try {
+    const fs = await FilesetResolver.forVisionTasks(WASM);
+    const mk = (delegate) => HandLandmarker.createFromOptions(fs, {
+      baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numHands: 1,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    let hl; try { hl = await mk('GPU'); } catch (e) { console.warn(e); hl = await mk('CPU'); }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 30 } } });
+    video.srcObject = stream; await video.play();
+    $('msg').textContent = "Qo'lingizni kameraga ko'rsating";
+    track(hl);
+  } catch (e) {
+    camMode = false; $('pip').style.display = 'none';
+    $('msg').textContent = e.name === 'NotAllowedError' ? "Kameraga ruxsat yo'q. Teginish bilan boshqaring." : 'Kamera ishga tushmadi: ' + e.message;
+    $('tip').textContent = "Bir barmoq — aylantirish · ikki barmoq — kattalashtirish";
+  }
+}
+
+$('go').onclick = () => { $('start').remove(); $('tip').textContent = "✊ musht — aylantirish · 🖐 tez silkitish — otish · yaqin/uzoq — kattalik"; startCamera(); };
+$('touch').onclick = () => { $('start').remove(); $('msg').textContent = ''; $('tip').textContent = "Bir barmoq — aylantirish · ikki barmoq — kattalashtirish"; };
+</script>
+</body>
+</html>
