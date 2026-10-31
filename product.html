@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mahsulot ko'rgazmasi</title>
+<style>
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 40%,#25324d 0%,#0a0e19 70%);overflow:hidden;font-family:system-ui,sans-serif;color:#d7e6ff;touch-action:none;user-select:none;-webkit-user-select:none}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #pip{position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:108px;height:144px;border-radius:12px;overflow:hidden;border:1px solid #ffffff30;background:#000;display:none}
+  #cam{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #sk{position:absolute;inset:0;width:100%;height:100%}
+  #hud{position:fixed;left:12px;top:calc(10px + env(safe-area-inset-top,0px));font-size:12px;opacity:.7}
+  #msg{position:fixed;left:0;right:0;top:12%;text-align:center;font-size:16px;padding:0 20px;pointer-events:none;text-shadow:0 0 8px #000}
+  #tip{position:fixed;left:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:calc(100% - 150px);font-size:12px;line-height:1.55;opacity:.75;pointer-events:none}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#02030af2;text-align:center;padding:24px}
+  #start p{max-width:340px;margin:0;line-height:1.6;opacity:.85;font-size:14px}
+  #opts{position:fixed;right:12px;top:calc(10px + env(safe-area-inset-top,0px));display:flex;gap:10px;align-items:center;z-index:2}
+  .chip{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid #ffffff55}
+  #up{font-size:12px;padding:7px 10px;border-radius:14px;background:#16243d;border:1px solid #ffffff30}
+  #opts.custom .chip{opacity:.35}
+  button{font-size:18px;font-weight:700;padding:14px 28px;border:0;border-radius:12px;background:#7dc4ff;color:#012}
+  button.alt{background:#16243d;color:#d7e6ff}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@mediapipe/tasks-vision":"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"}}
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="pip"><video id="cam" playsinline muted></video><canvas id="sk" width="216" height="288"></canvas></div>
+<div id="opts">
+  <button class="chip" data-i="0" style="background:linear-gradient(135deg,#34373d 50%,#141414 50%)"></button>
+  <button class="chip" data-i="1" style="background:linear-gradient(135deg,#d4af37 50%,#5a3a22 50%)"></button>
+  <button class="chip" data-i="2" style="background:linear-gradient(135deg,#c9ced6 50%,#1d3a6b 50%)"></button>
+  <button class="chip" data-i="3" style="background:linear-gradient(135deg,#2e3b32 50%,#2f5d44 50%)"></button>
+  <label id="up">📦 .glb<input id="glb" type="file" hidden></label>
+</div>
+<div id="hud"></div>
+<div id="msg"></div>
+<div id="tip"></div>
+<div id="start">
+  <h2 style="margin:0">Mahsulot ko'rgazmasi ⌚</h2>
+  <p>✊ Musht qiling — mahsulotni ushlab aylantirasiz.<br>🖐 Ochiq qo'lni tez siltang — o'zi aylanib ketadi.<br>Qo'l kameraga yaqin / uzoq — kattalashadi / kichrayadi.<br>Ranglar va o'z modelingiz (.glb) tepada.</p>
+  <button id="go">Kamerani yoqish</button>
+  <button id="touch" class="alt">Faqat teginish bilan</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+const $ = (id) => document.getElementById(id);
+const TEX = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r170/examples/textures/planets/';
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+class OneEuro {
+  constructor(minCutoff, beta) { this.m = minCutoff; this.b = beta; this.x = null; this.dx = 0; }
+  static a(c, dt) { const tau = 1 / (2 * Math.PI * c); return 1 / (1 + tau / dt); }
+  filter(v, dt) {
+    if (this.x === null) return (this.x = v);
+    this.dx += OneEuro.a(1, dt) * ((v - this.x) / dt - this.dx);
+    this.x += OneEuro.a(this.m + this.b * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+
+// ---------- sahna ----------
+const cv = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+function resize() {
+  const W = innerWidth, H = innerHeight;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  const need = 3.7, vh = camera.aspect < 1 ? need / camera.aspect : need;
+  camera.position.z = vh / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 3, 4); scene.add(key);
+const holder = new THREE.Group(); scene.add(holder);
+const globe = new THREE.Group(); holder.add(globe);
+globe.rotation.set(-0.12, 0.5, 0);
+
+// ---------- mahsulot: soat (namuna) ----------
+const PRESETS = [
+  { case: 0x34373d, strap: 0x141414, dial: 0x0d0f12, accent: 0xff5a36, ticks: 0xf2f2f2 },
+  { case: 0xd4af37, strap: 0x5a3a22, dial: 0xf2ead3, accent: 0xb3261e, ticks: 0x222222 },
+  { case: 0xc9ced6, strap: 0x1d3a6b, dial: 0xeef2f7, accent: 0x2a6fdb, ticks: 0x1a1a1a },
+  { case: 0x2e3b32, strap: 0x2f5d44, dial: 0x14231b, accent: 0xc8e04a, ticks: 0xe8f0d8 },
+];
+let product = null, hands = null;
+function setProduct(o) { if (product) globe.remove(product); product = o; globe.add(o); }
+
+function buildWatch(c) {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: c.case, metalness: 1, roughness: 0.28 });
+  const strapM = new THREE.MeshStandardMaterial({ color: c.strap, roughness: 0.65, metalness: 0 });
+  const dialM = new THREE.MeshStandardMaterial({ color: c.dial, roughness: 0.45, metalness: 0.25 });
+  const tickM = new THREE.MeshStandardMaterial({ color: c.ticks, roughness: 0.4, metalness: 0.4 });
+  const accM = new THREE.MeshStandardMaterial({ color: c.accent, roughness: 0.35, metalness: 0.3 });
+  const disc = (r, h, mat, z) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 48), mat); m.rotation.x = Math.PI / 2; m.position.z = z; g.add(m); return m; };
+  disc(0.62, 0.22, metal, 0);
+  disc(0.545, 0.02, dialM, 0.115);
+  const bez = new THREE.Mesh(new THREE.TorusGeometry(0.585, 0.05, 14, 64), metal); bez.position.z = 0.11; g.add(bez);
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.01, 48),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0 }));
+  glass.rotation.x = Math.PI / 2; glass.position.z = 0.17; g.add(glass);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2, big = i % 3 === 0;
+    const t = new THREE.Mesh(new THREE.BoxGeometry(big ? 0.05 : 0.025, big ? 0.12 : 0.07, 0.012), tickM);
+    t.position.set(Math.sin(a) * 0.45, Math.cos(a) * 0.45, 0.13); t.rotation.z = -a; g.add(t);
+  }
+  const hand = (w, len, mat, z) => {
+    const geo = new THREE.BoxGeometry(w, len, 0.012); geo.translate(0, len / 2 - 0.04, 0);
+    const m = new THREE.Mesh(geo, mat); m.position.z = z; g.add(m); return m;
+  };
+  hands = { h: hand(0.045, 0.27, tickM, 0.14), m: hand(0.032, 0.4, tickM, 0.15), s: hand(0.012, 0.46, accM, 0.16) };
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 20), accM); hub.rotation.x = Math.PI / 2; hub.position.z = 0.17; g.add(hub);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.13, 24), metal); crown.rotation.z = Math.PI / 2; crown.position.x = 0.67; g.add(crown);
+  for (const sy of [1, -1]) {
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.95, 0.07), strapM);
+    strap.position.set(0, sy * 1.05, -0.05); strap.rotation.x = -sy * 0.12; g.add(strap);
+    for (const sx of [1, -1]) { const lug = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.26, 0.12), metal); lug.position.set(sx * 0.3, sy * 0.62, -0.01); g.add(lug); }
+  }
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.1, 0.09), metal); buckle.position.set(0, -1.55, -0.12); buckle.rotation.x = 0.12; g.add(buckle);
+  return g;
+}
+setProduct(buildWatch(PRESETS[0]));
+
+const updaters = [() => {
+  if (!hands) return;
+  const d = new Date(), sec = d.getSeconds() + d.getMilliseconds() / 1000, min = d.getMinutes() + sec / 60, hr = (d.getHours() % 12) + min / 60;
+  hands.s.rotation.z = -sec * Math.PI / 30; hands.m.rotation.z = -min * Math.PI / 30; hands.h.rotation.z = -hr * Math.PI / 6;
+}];
+
+document.querySelectorAll('.chip').forEach((b) => b.onclick = () => { setProduct(buildWatch(PRESETS[+b.dataset.i])); $('opts').classList.remove('custom'); });
+$('glb').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  $('msg').textContent = 'Model yuklanmoqda…';
+  try {
+    const buf = await f.arrayBuffer();
+    new GLTFLoader().parse(buf, '', (gltf) => {
+      const o = gltf.scene, box = new THREE.Box3().setFromObject(o);
+      const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+      o.position.copy(ctr).negate();
+      const w = new THREE.Group(); w.add(o); w.scale.setScalar(2.6 / Math.max(size.x, size.y, size.z, 1e-6));
+      hands = null; setProduct(w); $('opts').classList.add('custom');
+      $('msg').textContent = camMode ? '' : '';
+    }, (err) => { $('msg').textContent = "Model o'qilmadi (faqat .glb, siqilmagan): " + (err.message || err); });
+  } catch (err) { $('msg').textContent = 'Xato: ' + err.message; }
+};
+$('msg').textContent = '';
+
+// ---------- harakat ----------
+function rot(yaw, pitch) {
+  globe.rotation.y += yaw;
+  globe.rotation.x = clamp(globe.rotation.x + pitch, -0.9, 0.9);
+}
+const omega = { x: 0, y: 0 };
+const ctl = { hand: false, grab: false, wx: 0, wy: 0 };
+let scale = 1, scaleT = 1, camMode = false, touching = false;
+
+let last = performance.now(), fpsAcc = 0, fpsN = 0, det = 0, lastHud = last;
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  if (!touching) {
+    if (ctl.grab) {
+      const k = 1 - Math.exp(-14 * dt);
+      omega.x += (ctl.wx - omega.x) * k; omega.y += (ctl.wy - omega.y) * k;
+    } else {
+      const f = Math.exp(-1.5 * dt); omega.x *= f; omega.y *= f;
+    }
+    const idle = ctl.hand ? 0 : 0.45;
+    rot((omega.y + idle) * dt, omega.x * dt);
+  }
+  for (const u of updaters) u();
+  scale += (scaleT - scale) * (1 - Math.exp(-6 * dt));
+  holder.scale.setScalar(scale);
+  renderer.render(scene, camera);
+
+  fpsAcc += 1 / Math.max(dt, 1e-3); fpsN++;
+  if (now - lastHud > 500) {
+    $('hud').textContent = `${(fpsAcc / fpsN).toFixed(0)} fps` + (camMode ? ` · qo'l: ${(det * 2).toFixed(0)} Hz` : '');
+    fpsAcc = fpsN = det = 0; lastHud = now;
+  }
+}
+requestAnimationFrame(loop);
+
+// ---------- teginish ----------
+const ptrs = new Map(); let pinch0 = null;
+cv.addEventListener('pointerdown', (e) => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+  touching = true; omega.x = omega.y = 0;
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), s: scaleT }; }
+});
+cv.addEventListener('pointermove', (e) => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const now = performance.now(), dtm = Math.max((now - p.t) / 1000, 0.008);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY; p.t = now;
+  if (ptrs.size === 2 && pinch0) {
+    const [a, b] = [...ptrs.values()];
+    scaleT = clamp(pinch0.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch0.d, 0.5, 2.2);
+  } else if (ptrs.size === 1) {
+    const k = 3.2 / Math.min(innerWidth, innerHeight);
+    rot(dx * k, dy * k);
+    omega.y += (dx * k / dtm - omega.y) * 0.4; omega.x += (dy * k / dtm - omega.x) * 0.4;
+  }
+});
+const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; if (!ptrs.size) touching = false; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', (e) => { scaleT = clamp(scaleT * (e.deltaY > 0 ? 0.92 : 1.08), 0.5, 2.2); }, { passive: true });
+
+// ---------- qo'l kuzatuvi ----------
+const PALM = [0, 5, 9, 13, 17], TIPS = [4, 8, 12, 16, 20];
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+function openness(w) {
+  const c = { x: 0, y: 0, z: 0 };
+  for (const i of PALM) { c.x += w[i].x / 5; c.y += w[i].y / 5; c.z += w[i].z / 5; }
+  let s = 0; for (const i of TIPS) s += d3(w[i], c);
+  return s / 5 / d3(w[0], w[9]);
+}
+const GAIN = 3.5, FLICK = 1.8, FLG = 2.0;
+const video = $('cam'), sk = $('sk').getContext('2d');
+
+function drawHand(l) {
+  sk.clearRect(0, 0, 216, 288);
+  if (!l) return;
+  const s = Math.max(216 / video.videoWidth, 288 / video.videoHeight), dw = video.videoWidth * s, dh = video.videoHeight * s;
+  const P = l.map((p) => ({ x: (216 - dw) / 2 + (1 - p.x) * dw, y: (288 - dh) / 2 + p.y * dh }));
+  sk.strokeStyle = sk.fillStyle = 'rgba(125,196,255,.9)'; sk.lineWidth = 2; sk.beginPath();
+  for (const [a, b] of BONES) { sk.moveTo(P[a].x, P[a].y); sk.lineTo(P[b].x, P[b].y); }
+  sk.stroke();
+  for (const p of P) { sk.beginPath(); sk.arc(p.x, p.y, 3, 0, 7); sk.fill(); }
+}
+
+function track(hl) {
+  const fx = new OneEuro(1.5, 0.02), fy = new OneEuro(1.5, 0.02), fs = new OneEuro(0.8, 0.005);
+  let prev = null, prevT = 0, seen = 0, grab = false, cost = 25, nextAt = 0;
+
+  function handle(r, now) {
+    const l = r.landmarks[0], w = r.worldLandmarks[0];
+    if (!l) {
+      drawHand(null);
+      if (ctl.hand && now - seen > 400) { ctl.hand = false; ctl.grab = false; grab = false; prev = null; scaleT = 1; $('msg').textContent = "Qo'lingizni kameraga ko'rsating"; }
+      return;
+    }
+    $('msg').textContent = '';
+    seen = now;
+    const dt = Math.max(0.02, (now - prevT) / 1000); prevT = now;
+    const asp = video.videoWidth / video.videoHeight;
+    let cx = 0, cy = 0; for (const i of PALM) { cx += l[i].x / 5; cy += l[i].y / 5; }
+    const x = fx.filter(1 - cx, dt), y = fy.filter(cy, dt);
+    const size = fs.filter(Math.hypot((l[0].x - l[9].x) * asp, l[0].y - l[9].y), dt);
+
+    const o = openness(w), was = grab;
+    if (grab) { if (o > 0.9) grab = false; } else if (o < 0.75) grab = true;
+    if (grab && !was) { ctl.wx = ctl.wy = 0; }
+
+    if (prev) {
+      const vx = ((x - prev.x) * asp) / dt, vy = (y - prev.y) / dt;
+      if (grab && prev.grab) { ctl.wy = vx * GAIN; ctl.wx = vy * GAIN; }
+      else if (!grab && Math.hypot(vx, vy) > FLICK) {
+        omega.y += (vx * FLG - omega.y) * 0.6; omega.x += (vy * FLG - omega.x) * 0.6;
+      }
+    }
+    ctl.grab = grab; ctl.hand = true; prev = { x, y, grab };
+    scaleT = 0.6 + 1.3 * smooth(0.15, 0.5, size);
+    drawHand(l);
+  }
+
+  const next = video.requestVideoFrameCallback ? (f) => video.requestVideoFrameCallback(f) : (f) => requestAnimationFrame(f);
+  const onFrame = () => {
+    const now = performance.now();
+    if (video.videoWidth && now >= nextAt) {
+      const r = hl.detectForVideo(video, now);
+      const t1 = performance.now();
+      cost += (t1 - now - cost) * 0.3;
+      // aniqlash asosiy oqimning ko'pi bilan ~yarmini egallasin: Yer silliq aylanaveradi
+      nextAt = t1 + Math.max(50, cost * 2);
+      det++;
+      handle(r, t1);
+    }
+    next(onFrame);
+  };
+  next(onFrame);
+}
+
+async function startCamera() {
+  camMode = true;
+  $('pip').style.display = 'block';
+  $('msg').textContent = 'Model yuklanmoqda…';
+  try {
+    const fs = await FilesetResolver.forVisionTasks(WASM);
+    const mk = (delegate) => HandLandmarker.createFromOptions(fs, {
+      baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numHands: 1,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    let hl; try { hl = await mk('GPU'); } catch (e) { console.warn(e); hl = await mk('CPU'); }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 30 } } });
+    video.srcObject = stream; await video.play();
+    $('msg').textContent = "Qo'lingizni kameraga ko'rsating";
+    track(hl);
+  } catch (e) {
+    camMode = false; $('pip').style.display = 'none';
+    $('msg').textContent = e.name === 'NotAllowedError' ? "Kameraga ruxsat yo'q. Teginish bilan boshqaring." : 'Kamera ishga tushmadi: ' + e.message;
+    $('tip').textContent = "Bir barmoq — aylantirish · ikki barmoq — kattalashtirish";
+  }
+}
+
+$('go').onclick = () => { $('start').remove(); $('tip').textContent = "✊ musht — aylantirish · 🖐 tez silkitish — otish · yaqin/uzoq — kattalik"; startCamera(); };
+$('touch').onclick = () => { $('start').remove(); $('msg').textContent = ''; $('tip').textContent = "Bir barmoq — aylantirish · ikki barmoq — kattalashtirish"; };
+</script>
+</body>
+</html>
