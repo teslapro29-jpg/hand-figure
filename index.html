@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
 <title>Hand figure</title>
 <style>
   html,body{margin:0;height:100%;background:#05070d;overflow:hidden;font-family:system-ui,sans-serif;color:#d7e6ff}
-  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.45}
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.5}
   canvas{position:fixed;inset:0;width:100%;height:100%}
   #status{position:fixed;left:0;right:0;top:46%;text-align:center;font-size:18px;opacity:0;transition:opacity .3s;padding:0 20px;pointer-events:none;text-shadow:0 0 8px #000}
-  #hud{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));font-size:12px;opacity:.7}
+  #hud{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));font-size:12px;opacity:.75;text-shadow:0 0 6px #000}
   #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#05070df0;text-align:center;padding:24px}
-  #start p{max-width:340px;margin:0;line-height:1.5;opacity:.85}
+  #start p{max-width:340px;margin:0;line-height:1.6;opacity:.85;font-size:14px}
   button{font-size:18px;font-weight:700;padding:14px 28px;border:0;border-radius:12px;background:#7df9ff;color:#012}
   button.alt{background:#1b2740;color:#d7e6ff}
 </style>
@@ -30,7 +31,7 @@
 <div id="hud"></div>
 <div id="start">
   <h2 style="margin:0">Qo'l bilan boshqariladigan figura</h2>
-  <p>Bitta qo'lingizni kameraga ko'rsating: barmoqlar soni shaklni tanlaydi. Ikkinchi qo'l — asbob (o'lcham, aylantirish).</p>
+  <p>Birinchi qo'l figurani boshqaradi, ko'tarilgan barmoqlar soni shaklni tanlaydi (0 — silindr … 5 — beshburchakli prizma).<br>Ikkinchi qo'l — asbob: qisish/ochish — o'lcham, ko'rsatkich barmoqni siltash — aylantirish, bilakni burish — roll.</p>
   <button id="go">Kamerani yoqish</button>
   <button id="demoBtn" class="alt">Demo (kamerasiz)</button>
 </div>
@@ -42,7 +43,6 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const lite = matchMedia('(pointer: coarse)').matches || location.search.includes('lite');
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
 // One Euro Filter: heavy smoothing when the signal is slow (kills jitter),
@@ -81,11 +81,11 @@ const smoothstep = (a, b, v) => {
 };
 
 
-const RING = lite ? 60 : 120; // perimeter samples; divisible by 1..5 so corners stay sharp
+const RING = 120; // perimeter samples; divisible by 1..5 so corners stay sharp
 const PILLARS = 5;
 const HALF_H = 0.7;
-const GHOSTS = lite ? 4 : 10;
-const GHOST_STEP = lite ? 0.9 : 0.4; // frames of history between neighbouring ghosts (sub-frame, so the trail is dense)
+const GHOSTS = 10;
+const GHOST_STEP = 0.4; // frames of history between neighbouring ghosts (sub-frame, so the trail is dense)
 const MORPH_K = 240; // per-vertex spring: underdamped, so the outline wobbles into the new shape
 const MORPH_C = 15;
 
@@ -144,6 +144,17 @@ function createFigure(scene) {
     scene.add(mesh);
     layers.push(mesh);
   }
+
+  // CSS blur/drop-shadow telefonni sekinlashtiradi: nur o'rniga ikkita keng, xira chiziq qatlami.
+  const glows = [[7, 0.36], [17, 0.15]].map(([w, k]) => {
+    const m = new LineSegments2(geometry, lineMaterial());
+    m.material.linewidth = w;
+    m.frustumCulled = false;
+    m.renderOrder = -1;
+    m.userData.k = k;
+    scene.add(m);
+    return m;
+  });
 
   const color = COLORS[0].clone();
   let sides = 0;
@@ -213,10 +224,19 @@ function createFigure(scene) {
       mesh.material.color.copy(color).multiplyScalar(a);
       mesh.material.opacity = a;
     });
+    const m0 = layers[0];
+    for (const g of glows) {
+      g.position.copy(m0.position);
+      g.quaternion.copy(m0.quaternion);
+      g.scale.copy(m0.scale);
+      g.visible = m0.visible;
+      g.material.color.copy(color).multiplyScalar(visibility * g.userData.k);
+      g.material.opacity = visibility * g.userData.k;
+    }
   }
 
   function resize(w, h) {
-    for (const mesh of layers) mesh.material.resolution.set(w, h);
+    for (const mesh of [...layers, ...glows]) mesh.material.resolution.set(w, h);
   }
 
   return { setSides, update, place, resize, color, ghosts: GHOSTS };
@@ -328,19 +348,21 @@ class Track {
  */
 async function startTracking(video, view) {
   const fileset = await FilesetResolver.forVisionTasks(WASM);
-  const make = (delegate) => HandLandmarker.createFromOptions(fileset, {
-    baseOptions: { modelAssetPath: MODEL, delegate },
+  const make = (d) => HandLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: MODEL, delegate: d },
     runningMode: 'VIDEO',
     numHands: 2,
-    minHandDetectionConfidence: 0.6,
-    minHandPresenceConfidence: 0.6,
-    minTrackingConfidence: 0.6,
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5,
   });
+  let delegate = 'GPU';
   let landmarker;
   try {
     landmarker = await make('GPU');
   } catch (e) {
-    console.warn('GPU yo\'q, CPU ishlatiladi', e);
+    console.warn("GPU yo'q, CPU ishlatiladi", e);
+    delegate = 'CPU';
     landmarker = await make('CPU');
   }
 
@@ -377,7 +399,9 @@ async function startTracking(video, view) {
   const gap = (tr, d) => Math.hypot(d.x - tr.rawX, d.y - tr.rawY);
   const near = (tr, d) => gap(tr, d) < Math.max(view.W * 0.25, tr.size * 3);
 
+  let ver = 0, hz = 0, hzN = 0, hzT = performance.now(), lastDetEnd = 0, interval = 50;
   function process(result, now) {
+    ver++;
     const dets = result.landmarks.map((lm, i) => measure(lm, result.worldLandmarks[i]));
 
     // Keep identities by position: MediaPipe does not give stable hand ids.
@@ -402,26 +426,50 @@ async function startTracking(video, view) {
   }
 
   function expire(now) {
-    if (tool && now - tool.seen > TOOL_GRACE_MS) tool = null;
+    if (tool && now - tool.seen > TOOL_GRACE_MS) {
+      tool = null;
+      ver++;
+    }
     if (lead && now - lead.seen > LEAD_GRACE_MS) {
       lead = tool; // the remaining hand takes over the figure
       tool = null;
+      ver++;
     }
   }
 
-  let skip = 0;
+  // Aniqlash asosiy oqimning ko'pi bilan ~60% ini egallasin: qolgan vaqtda ekran silliq chiziladi.
+  let nextAt = 0;
+  let cost = 30;
   const onFrame = () => {
     const now = performance.now();
-    if (video.videoWidth && (!lite || (skip++ & 1) === 0)) process(landmarker.detectForVideo(video, now), now);
+    if (video.videoWidth && now >= nextAt) {
+      const result = landmarker.detectForVideo(video, now);
+      const t1 = performance.now();
+      cost += (t1 - now - cost) * 0.3;
+      interval = Math.max(33, cost * 1.6);
+      nextAt = now + interval;
+      lastDetEnd = t1;
+      hzN++;
+      if (t1 - hzT > 1000) {
+        hz = Math.round((hzN * 1000) / (t1 - hzT));
+        hzN = 0;
+        hzT = t1;
+      }
+      process(result, t1);
+    }
     next(onFrame);
   };
   const next = video.requestVideoFrameCallback ? (f) => video.requestVideoFrameCallback(f) : (f) => requestAnimationFrame(f);
   next(onFrame);
 
   return {
+    delegate,
     read(now) {
       expire(now);
       return {
+        ver,
+        hz,
+        lastDetEnd,
         lead: lead && { x: lead.x, y: lead.y, size: lead.size, fingers: lead.fingers },
         tool: tool && {
           open: tool.open,
@@ -429,7 +477,7 @@ async function startTracking(video, view) {
           vx: tool.vx,
           vy: tool.vy,
           twist: tool.twist,
-          fresh: now - tool.seen < 120,
+          fresh: now - tool.seen < Math.max(120, interval * 1.6),
         },
         hands: [lead, tool].filter(Boolean).map((tr) => tr.pts),
       };
@@ -468,21 +516,23 @@ const hud = document.getElementById('hud');
 const sk = skeleton.getContext('2d');
 
 const view = { W: innerWidth, H: innerHeight };
-const renderer = new THREE.WebGLRenderer({ canvas: sceneCanvas, alpha: true, antialias: !lite });
+const renderer = new THREE.WebGLRenderer({ canvas: sceneCanvas, alpha: true, antialias: true });
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 1, 10000);
 const figure = createFigure(scene);
 
+let dprCap = 2;
 function resize() {
   view.W = innerWidth;
   view.H = innerHeight;
-  const dpr = lite ? 1.25 : Math.min(devicePixelRatio, 2);
+  const dpr = Math.min(devicePixelRatio, dprCap);
+  const sdpr = Math.min(dpr, 1.5);
   renderer.setPixelRatio(dpr);
   renderer.setSize(view.W, view.H, false);
-  skeleton.width = view.W * dpr;
-  skeleton.height = view.H * dpr;
-  sk.setTransform(dpr, 0, 0, dpr, 0, 0);
+  skeleton.width = view.W * sdpr;
+  skeleton.height = view.H * sdpr;
+  sk.setTransform(sdpr, 0, 0, sdpr, 0, 0);
   // Camera distance is chosen so that 1 world unit == 1 CSS pixel on the z = 0 plane.
   camera.aspect = view.W / view.H;
   camera.position.set(view.W / 2, -view.H / 2, view.H / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
@@ -594,12 +644,6 @@ function present(dt) {
   poses.unshift(pose);
   figure.place(poses, visibility, clamp(speed / 700 + spin / 8 + pulse, 0, 1));
 
-  const blurTarget = clamp(speed / 450 + spin * 0.35 + Math.abs(scaleV) * 0.5 + pulse * 4, 0, CFG.maxBlur);
-  blur += (blurTarget - blur) * (1 - Math.exp(-18 * dt));
-  if (!lite) {
-    const glow = `drop-shadow(0 0 12px #${figure.color.getHexString()})`;
-    sceneCanvas.style.filter = blur > 0.25 ? `blur(${blur.toFixed(2)}px) ${glow}` : glow;
-  }
 }
 
 // --- hand skeleton overlay --------------------------------------------------
@@ -650,10 +694,10 @@ function demoInput(t) {
   };
 }
 
-async function openCamera() {
+async function openCamera(hq) {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: { facingMode: 'user', width: { ideal: lite ? 640 : 1280 }, height: { ideal: lite ? 480 : 720 }, frameRate: { ideal: 30 } },
+    video: { facingMode: 'user', width: { ideal: hq ? 1280 : 640 }, height: { ideal: hq ? 720 : 480 }, frameRate: { ideal: 30 } },
   });
   video.srcObject = stream;
   await video.play();
@@ -665,13 +709,19 @@ async function main() {
   if (mode === 'demo') {
     read = (now) => demoInput(now / 1000);
   } else {
-    const [, tracker] = await Promise.all([openCamera(), startTracking(video, view)]);
+    statusEl.style.opacity = 1;
+    statusEl.textContent = 'Model yuklanmoqda…';
+    const tracker = await startTracking(video, view);
+    await openCamera(tracker.delegate === 'GPU');
     read = tracker.read;
   }
 
   let last = performance.now();
   let fps = 60;
   let frame = 0;
+  let lastVer = -1;
+  let winN = 0;
+  let winSlow = 0;
   function loop(now) {
     requestAnimationFrame(loop);
     const rawDt = (now - last) / 1000;
@@ -683,15 +733,31 @@ async function main() {
     for (let i = 0; i < n; i++) step(input, dt / n, now / 1000 - dt + ((i + 1) * dt) / n);
     present(dt);
     renderer.render(scene, camera);
-    drawHands(input.hands);
+    if (input.ver !== lastVer) {
+      lastVer = input.ver;
+      drawHands(input.hands);
+    }
+    // Ekran sekinlashsa, aniqlik avtomatik biroz pasayadi (faqat aniqlash bo'lmagan kadrlar o'lchanadi).
+    if (now - (input.lastDetEnd || 0) > 80) {
+      winN++;
+      if (rawDt > 0.03) winSlow++;
+      if (winN >= 90) {
+        if (winSlow > 45 && dprCap > 1) {
+          dprCap = Math.max(1, dprCap - 0.25);
+          resize();
+        }
+        winN = winSlow = 0;
+      }
+    }
 
     fps += (1 / Math.max(rawDt, 1e-3) - fps) * 0.05;
     if (frame++ % 10 === 0) {
       statusEl.style.opacity = input.lead ? 0 : 1;
       statusEl.textContent = "Qo'lingizni kameraga ko'rsating";
+      const stat = `${fps.toFixed(0)} fps · ${input.hz || 0} Hz`;
       hud.textContent = input.lead
-        ? `asosiy qo'l: ${input.lead.fingers} · ikkinchi qo'l: ${input.tool ? `masshtab ×${scale.toFixed(2)}` : "yo'q"} · ${fps.toFixed(0)} fps`
-        : `${fps.toFixed(0)} fps`;
+        ? `asosiy qo'l: ${input.lead.fingers} · ikkinchi qo'l: ${input.tool ? `masshtab ×${scale.toFixed(2)}` : "yo'q"} · ${stat}`
+        : stat;
     }
   }
   requestAnimationFrame(loop);
