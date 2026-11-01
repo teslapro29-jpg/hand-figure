@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
+<title>Qilich va kamon</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070d;overflow:hidden;font-family:system-ui,sans-serif;color:#e8f0ff}
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.92}
+  canvas{position:fixed;inset:0;width:100%;height:100%}
+  #sk{pointer-events:none}
+  #msg{position:fixed;left:0;right:0;top:44%;text-align:center;font-size:18px;padding:0 20px;pointer-events:none;text-shadow:0 0 8px #000}
+  #hud{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));font-size:13px;text-shadow:0 0 6px #000;line-height:1.5}
+  #swap{position:fixed;right:12px;top:calc(12px + env(safe-area-inset-top,0px));font-size:14px;padding:8px 12px;border-radius:12px;z-index:2;background:#000a;color:#fff;border:1px solid #fff4}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#05070df2;text-align:center;padding:24px}
+  #start p{max-width:350px;margin:0;line-height:1.65;opacity:.9;font-size:14px}
+  button{font-size:18px;font-weight:700;padding:14px 28px;border:0;border-radius:12px;background:#ffcf5a;color:#201400}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@mediapipe/tasks-vision":"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"}}
+</script>
+</head>
+<body>
+<video id="cam" playsinline muted></video>
+<canvas id="gl"></canvas>
+<canvas id="sk"></canvas>
+<div id="msg"></div>
+<div id="hud"></div>
+<button id="swap" style="display:none">🔄 Qo'llarni almashtirish</button>
+<div id="start">
+  <h2 style="margin:0">⚔️ Qilich va kamon 🏹</h2>
+  <p>✊ <b>Musht</b> qiling — qo'lingizda qilich paydo bo'ladi.<br>
+     🖐 <b>Kaftni oching</b> — qo'lingizda kamon bo'ladi.<br>
+     🤏 Ikkinchi qo'l bilan <b>ikki barmoqni qisib</b>, kamondan <b>orqaga torting</b> va <b>qo'yib yuboring</b> — o'q otiladi.</p>
+  <button id="go">Boshlash</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+const $ = (id) => document.getElementById(id);
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+
+class OneEuro {
+  constructor(m, b) { this.m = m; this.b = b; this.x = null; this.dx = 0; }
+  static a(c, dt) { return 1 / (1 + 1 / (2 * Math.PI * c) / dt); }
+  filter(v, dt) {
+    if (this.x === null) return (this.x = v);
+    this.dx += OneEuro.a(1, dt) * ((v - this.x) / dt - this.dx);
+    this.x += OneEuro.a(this.m + this.b * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+
+// ---------- sahna ----------
+const video = $('cam'), sk = $('sk').getContext('2d');
+const V = { W: innerWidth, H: innerHeight };
+const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), alpha: true, antialias: true, powerPreference: 'high-performance' });
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(-300, 600, 800); scene.add(sun);
+const camera = new THREE.OrthographicCamera(0, 1, 0, -1, 0.1, 3000); camera.position.z = 1000;
+function resize() {
+  V.W = innerWidth; V.H = innerHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.setSize(V.W, V.H, false);
+  camera.right = V.W; camera.bottom = -V.H; camera.updateProjectionMatrix();
+  $('sk').width = V.W; $('sk').height = V.H;
+}
+addEventListener('resize', resize); resize();
+
+const steel = new THREE.MeshStandardMaterial({ color: 0xdfe8f5, metalness: 1, roughness: 0.18, emissive: 0x2a5cff, emissiveIntensity: 0.2 });
+const gold = new THREE.MeshStandardMaterial({ color: 0xd8a93a, metalness: 1, roughness: 0.3 });
+const leather = new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 0.8 });
+const wood = new THREE.MeshStandardMaterial({ color: 0x9a6330, roughness: 0.5, metalness: 0.1 });
+const stringM = new THREE.MeshBasicMaterial({ color: 0xf6f2df });
+const feather = new THREE.MeshStandardMaterial({ color: 0xd23b3b, roughness: 0.6, side: THREE.DoubleSide });
+
+// Qilich (birlik = kaft o'lchami; boshi musht markazida, tig'i +Y bo'ylab)
+const sword = new THREE.Group();
+{
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.14, 0.42); sh.lineTo(0.14, 0.42); sh.lineTo(0.14, 2.9); sh.lineTo(0, 3.35); sh.lineTo(-0.14, 2.9); sh.closePath();
+  const bg = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 });
+  bg.translate(0, 0, -0.025);
+  const mk = (geo, mat, y) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; sword.add(m); };
+  sword.add(new THREE.Mesh(bg, steel));
+  mk(new THREE.BoxGeometry(0.85, 0.1, 0.14), gold, 0.38);
+  mk(new THREE.CylinderGeometry(0.065, 0.065, 0.7, 12), leather, 0);
+  mk(new THREE.SphereGeometry(0.1, 16, 12), gold, -0.4);
+  sword.rotation.order = 'ZYX';
+}
+
+// Kamon (birlik = kamon balandligi; tutqich markazda, +X — otish yo'nalishi)
+const bow = new THREE.Group();
+const strA = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 1, 6), stringM);
+const strB = strA.clone();
+{
+  const c = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-0.285, 0.5, 0), new THREE.Vector3(0.285, 0, 0), new THREE.Vector3(-0.285, -0.5, 0));
+  bow.add(new THREE.Mesh(new THREE.TubeGeometry(c, 32, 0.014, 8), wood));
+  const g = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.16, 10), leather); bow.add(g);
+  bow.add(strA, strB);
+}
+function seg(m, ax, ay, bx, by) {
+  m.position.set((ax + bx) / 2, (ay + by) / 2, 0);
+  m.scale.set(1, Math.hypot(bx - ax, by - ay), 1);
+  m.rotation.z = Math.atan2(by - ay, bx - ax) - Math.PI / 2;
+}
+function setString(pull) { seg(strA, -0.285, 0.5, -0.285 - pull, 0); seg(strB, -0.285 - pull, 0, -0.285, -0.5); }
+
+// O'q (birlik = kamon balandligi; dumi boshida, uchi +X da)
+function makeArrow() {
+  const g = new THREE.Group(), L = 0.9;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, L, 8), wood); shaft.rotation.z = Math.PI / 2; shaft.position.x = L / 2; g.add(shaft);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.019, 0.07, 10), steel); head.rotation.z = -Math.PI / 2; head.position.x = L + 0.03; g.add(head);
+  for (let i = 0; i < 3; i++) {
+    const geo = new THREE.PlaneGeometry(0.1, 0.03); geo.translate(0, 0.02, 0);
+    const f = new THREE.Mesh(geo, feather); f.position.x = 0.07; f.rotation.x = (i * Math.PI * 2) / 3; g.add(f);
+  }
+  return g;
+}
+const arrowProto = makeArrow();
+const nockArrow = arrowProto.clone();
+bow.add(nockArrow);
+scene.add(sword, bow);
+sword.visible = bow.visible = false;
+
+// ---------- holat ----------
+const W = { vis: 0, mode: '', x: 0, y: 0, u: 100, ang: Math.PI / 2, tx: 0, ty: 0, tu: 100, tang: Math.PI / 2, seen: -1e9, t: 0, pop: 1, popV: 0, fist: false, cand: '', candN: 0 };
+const D = { pinch: false, active: false, base: 0, pullPx: 0, disp: 0, dispV: 0, px: 0, py: 0, sx: 0, sy: 0, seen: -1e9, t: 0 };
+const aim = { v: Math.PI };
+const arrows = [];
+let swap = false, lastW = -1e9, wLast = { x: 0, y: 0 };
+const fx = new OneEuro(1.8, 0.02), fy = new OneEuro(1.8, 0.02), fu = new OneEuro(0.8, 0.005), fpx = new OneEuro(2.5, 0.05), fpy = new OneEuro(2.5, 0.05);
+$('swap').onclick = () => { swap = !swap; lastW = -1e9; };
+
+const PALM = [0, 5, 9, 13, 17], TIPS = [4, 8, 12, 16, 20];
+function openness(w) {
+  const c = { x: 0, y: 0, z: 0 };
+  for (const i of PALM) { c.x += w[i].x / 5; c.y += w[i].y / 5; c.z += w[i].z / 5; }
+  let s = 0; for (const i of TIPS) s += d3(w[i], c);
+  return s / 5 / d3(w[0], w[9]);
+}
+function measure(lm, w) {
+  const s = Math.max(V.W / video.videoWidth, V.H / video.videoHeight), dw = video.videoWidth * s, dh = video.videoHeight * s;
+  const P = lm.map((p) => ({ x: (V.W - dw) / 2 + (1 - p.x) * dw, y: (V.H - dh) / 2 + p.y * dh }));
+  let cx = 0, cy = 0; for (const i of PALM) { cx += P[i].x / 5; cy += P[i].y / 5; }
+  return {
+    cx, cy, size: Math.max(d2(P[0], P[9]), d2(P[5], P[17]) * 1.3), ang: Math.atan2(-(P[9].y - P[0].y), P[9].x - P[0].x),
+    open: openness(w), pinch: d3(w[4], w[8]) / d3(w[0], w[9]), px: (P[4].x + P[8].x) / 2, py: (P[4].y + P[8].y) / 2,
+  };
+}
+
+function handle(r, t) {
+  const dets = r.landmarks.map((lm, i) => measure(lm, r.worldLandmarks[i]));
+  let Wd = null, Dd = null;
+  if (dets.length === 1) {
+    const a = dets[0];
+    if (t - lastW < 700 && d2({ x: a.cx, y: a.cy }, wLast) > Math.max(V.W, V.H) * 0.3) Dd = a; else Wd = a;
+  } else if (dets.length >= 2) {
+    const [a, b] = dets;
+    if (t - lastW < 700) {
+      const pa = d2({ x: a.cx, y: a.cy }, wLast), pb = d2({ x: b.cx, y: b.cy }, wLast);
+      if (pa <= pb) { Wd = a; Dd = b; } else { Wd = b; Dd = a; }
+    } else {
+      const left = a.cx <= b.cx ? a : b, right = left === a ? b : a;
+      if (swap) { Wd = right; Dd = left; } else { Wd = left; Dd = right; }
+    }
+  }
+
+  if (Wd) {
+    const dt = Math.max(0.02, (t - W.t) / 1000); W.t = t; W.seen = t; lastW = t; wLast = { x: Wd.cx, y: Wd.cy };
+    W.tx = fx.filter(Wd.cx, dt); W.ty = fy.filter(Wd.cy, dt); W.tu = fu.filter(Wd.size, dt); W.tang = Wd.ang;
+    if (W.fist) { if (Wd.open > 0.88) W.fist = false; } else if (Wd.open < 0.76) W.fist = true;
+    const cand = W.fist ? 'sword' : 'bow';
+    if (cand === W.cand) W.candN++; else { W.cand = cand; W.candN = 1; }
+    if (W.candN >= 2 && W.mode !== cand) { W.mode = cand; W.pop = 0.4; W.popV = 6; if (cand !== 'bow') D.active = false; }
+  }
+
+  if (Dd) {
+    const dt = Math.max(0.02, (t - D.t) / 1000); D.t = t; D.seen = t;
+    D.px = fpx.filter(Dd.px, dt); D.py = fpy.filter(Dd.py, dt);
+    const pinched = D.pinch ? Dd.pinch < 0.45 : Dd.pinch < 0.28;
+    if (pinched && !D.pinch) {
+      D.sx = D.px; D.sy = D.py;
+      if (W.mode === 'bow' && W.vis > 0.5) { D.active = true; D.base = d2(W, { x: D.px, y: D.py }); D.pullPx = 0; }
+    }
+    if (!pinched && D.pinch && D.active) {
+      const u = clamp(W.u, 30, V.H * 0.22);
+      const ratio = clamp(D.pullPx / (1.4 * u), 0, 1);
+      if (ratio > 0.12) fire(ratio);
+      D.active = false;
+    }
+    D.pinch = pinched;
+  } else if (t - D.seen > 400) { D.pinch = false; D.active = false; }
+}
+
+function fire(ratio) {
+  const h = 3.8 * clamp(W.u, 30, V.H * 0.22);
+  const ax = Math.cos(aim.v), ay = -Math.sin(aim.v), back = 0.285 * h + D.pullPx, sp = 650 + 1500 * ratio;
+  const m = arrowProto.clone(); m.scale.setScalar(h); m.rotation.z = aim.v; scene.add(m);
+  arrows.push({ m, x: W.x - ax * back, y: W.y - ay * back, vx: ax * sp, vy: ay * sp, g: 420, life: 2.4 });
+  D.disp = D.pullPx; D.dispV = 0;
+}
+
+// ---------- chizish ----------
+let last = performance.now(), fps = 60, hz = 0, hudT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
+
+  const alive = now - W.seen < 350;
+  W.vis += ((alive ? 1 : 0) - W.vis) * (1 - Math.exp(-12 * dt));
+  if (W.vis < 0.05) { W.x = W.tx; W.y = W.ty; W.ang = W.tang; }
+  W.x += (W.tx - W.x) * (1 - Math.exp(-22 * dt)); W.y += (W.ty - W.y) * (1 - Math.exp(-22 * dt));
+  W.u += (W.tu - W.u) * (1 - Math.exp(-10 * dt));
+  W.ang += wrap(W.tang - W.ang) * (1 - Math.exp(-16 * dt));
+  W.popV += (220 * (1 - W.pop) - 14 * W.popV) * dt; W.pop += W.popV * dt;
+  const u = clamp(W.u, 30, V.H * 0.22), s = W.vis * W.pop;
+
+  // o'q torish
+  if (D.active) {
+    const k = 1 - Math.exp(-20 * dt); D.sx += (D.px - D.sx) * k; D.sy += (D.py - D.sy) * k;
+    D.pullPx = clamp(d2(W, { x: D.sx, y: D.sy }) - D.base, 0, 1.4 * u);
+    D.disp = D.pullPx;
+  } else {
+    D.dispV += (-1200 * D.disp - 18 * D.dispV) * dt; D.disp += D.dispV * dt;
+  }
+
+  // otish yo'nalishi
+  let tgt;
+  if (D.active) tgt = Math.atan2(-(W.y - D.sy), W.x - D.sx);
+  else { tgt = W.ang + Math.PI / 2; if ((W.x - V.W / 2) * Math.cos(tgt) < 0) tgt += Math.PI; }
+  aim.v += wrap(tgt - aim.v) * (1 - Math.exp(-14 * dt));
+
+  sword.visible = W.mode === 'sword' && s > 0.02;
+  bow.visible = W.mode === 'bow' && s > 0.02;
+  if (sword.visible) {
+    sword.position.set(W.x, -W.y, 0); sword.scale.setScalar(u * s);
+    sword.rotation.set(0, Math.sin(now / 650) * 0.6, W.ang - Math.PI / 2);
+  }
+  if (bow.visible) {
+    const h = 3.8 * u;
+    bow.position.set(W.x, -W.y, 0); bow.scale.setScalar(h * s); bow.rotation.z = aim.v;
+    setString(D.disp / h);
+    nockArrow.visible = D.active;
+    nockArrow.position.set(-0.285 - D.disp / h, 0, 0);
+  }
+
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    a.vy += a.g * dt; a.x += a.vx * dt; a.y += a.vy * dt; a.life -= dt;
+    a.m.position.set(a.x, -a.y, 0); a.m.rotation.z = Math.atan2(-a.vy, a.vx);
+    if (a.life <= 0 || a.x < -400 || a.x > V.W + 400 || a.y > V.H + 400 || a.y < -400) { scene.remove(a.m); arrows.splice(i, 1); }
+  }
+  renderer.render(scene, camera);
+
+  // ikkinchi qo'l belgisi
+  sk.clearRect(0, 0, V.W, V.H);
+  if (D.pinch && now - D.seen < 400) {
+    sk.strokeStyle = sk.fillStyle = D.active ? '#ffcf5a' : '#7df9ff'; sk.lineWidth = 3;
+    sk.beginPath(); sk.arc(D.active ? D.sx : D.px, D.active ? D.sy : D.py, 16, 0, 7); sk.stroke();
+    if (D.active) { sk.globalAlpha = 0.5; sk.beginPath(); sk.moveTo(W.x, W.y); sk.lineTo(D.sx, D.sy); sk.stroke(); sk.globalAlpha = 1; }
+  }
+
+  if (now - hudT > 500) {
+    hudT = now;
+    $('hud').textContent = (W.vis > 0.3 ? (W.mode === 'sword' ? '⚔️ Qilich' : W.mode === 'bow' ? '🏹 Kamon' : '') + ' · ' : '') + `${fps.toFixed(0)} fps · ${hz} Hz`;
+    if (running) $('msg').textContent = W.vis > 0.3 ? '' : "Qo'lingizni kameraga ko'rsating";
+  }
+}
+requestAnimationFrame(frame);
+
+// ---------- kuzatuv ----------
+let running = false;
+function track(hl) {
+  const next = video.requestVideoFrameCallback ? (f) => video.requestVideoFrameCallback(f) : (f) => requestAnimationFrame(f);
+  let nextAt = 0, cost = 30, n = 0, t0 = performance.now();
+  const onFrame = () => {
+    const now = performance.now();
+    if (video.videoWidth && now >= nextAt) {
+      const r = hl.detectForVideo(video, now);
+      const t1 = performance.now();
+      cost += (t1 - now - cost) * 0.3;
+      nextAt = now + Math.max(33, cost * 1.5);
+      n++; if (t1 - t0 > 1000) { hz = Math.round((n * 1000) / (t1 - t0)); n = 0; t0 = t1; }
+      handle(r, t1);
+    }
+    next(onFrame);
+  };
+  next(onFrame);
+}
+
+async function start() {
+  $('start').remove(); $('msg').textContent = 'Model yuklanmoqda…';
+  try {
+    const fs = await FilesetResolver.forVisionTasks(WASM);
+    const mk = (d) => HandLandmarker.createFromOptions(fs, {
+      baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    let hl, gpu = true;
+    try { hl = await mk('GPU'); } catch (e) { console.warn(e); gpu = false; hl = await mk('CPU'); }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: gpu ? 1280 : 640 }, height: { ideal: gpu ? 720 : 480 }, frameRate: { ideal: 30 } } });
+    video.srcObject = stream; await video.play();
+    running = true; $('swap').style.display = 'block';
+    track(hl);
+  } catch (e) {
+    $('msg').textContent = e.name === 'NotAllowedError' ? "Kameraga ruxsat yo'q. Ruxsat berib, sahifani yangilang." : 'Ishga tushmadi: ' + e.message;
+  }
+}
+$('go').onclick = start;
+</script>
+</body>
+</html>
