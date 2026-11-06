@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#050510">
+<title>HoloHand AI</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03030a;color:#eefaff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  #stage{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #video{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+  .hud{position:fixed;inset:0;pointer-events:none;padding:16px;display:flex;flex-direction:column;justify-content:space-between}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .brand{font-weight:800;letter-spacing:.16em;font-size:13px;color:#d9f7ff;text-shadow:0 0 18px #36dfff}
+  .stats{font-size:11px;line-height:1.7;text-align:right;color:#a8c8d8;background:#07101c99;border:1px solid #3eeaff44;border-radius:12px;padding:8px 11px;backdrop-filter:blur(8px)}
+  .bottom{display:flex;justify-content:center;align-items:end}
+  .hint{max-width:560px;text-align:center;font-size:12px;line-height:1.55;color:#b7c9dc;background:#07101caa;border:1px solid #3eeaff33;border-radius:14px;padding:10px 14px;backdrop-filter:blur(8px)}
+  #start{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at center,#11152c 0%,#03030a 70%);z-index:5;padding:24px}
+  .panel{width:min(440px,100%);padding:26px;border:1px solid #52eaff55;border-radius:22px;background:#09101dcc;box-shadow:0 0 55px #1acfff22;text-align:center}
+  .panel h1{margin:0 0 8px;font-size:25px;letter-spacing:.08em}
+  .panel p{color:#a9bfd1;font-size:13px;line-height:1.6}
+  button{border:0;border-radius:999px;padding:13px 24px;background:linear-gradient(90deg,#00d5ff,#a34dff,#ff4fc8);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 0 25px #5d7dff55}
+  #error{color:#ff9fbc;font-size:12px;min-height:18px;margin-top:10px}
+  .small{font-size:11px!important;color:#8198ad!important}
+  @media(max-width:520px){.hud{padding:11px}.brand{font-size:11px}.stats{font-size:10px;padding:6px 8px}.hint{font-size:11px}}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="fx"></canvas></div>
+<video id="video" playsinline muted></video>
+<div class="hud">
+  <div class="top">
+    <div class="brand">HOLOHAND <span style="color:#55eaff">AI</span></div>
+    <div class="stats" id="stats">CAMERA: OFF<br>FPS: --<br>GESTURE: --</div>
+  </div>
+  <div class="bottom"><div class="hint" id="hint">Kamerani yoqing. Kaftingizni kameraga ko‘rsating.</div></div>
+</div>
+<div id="start">
+  <div class="panel">
+    <h1>HOLOHAND <span style="color:#53eaff">AI</span></h1>
+    <p>Qo‘lingiz bilan boshqariladigan rangli holografik energiya. Kamera tasviri qurilmangizda qayta ishlanadi.</p>
+    <button id="go">KAMERANI YOQISH</button>
+    <div id="error"></div>
+    <p class="small">Eng yaxshi natija uchun yorug‘ joyda turing va kaftingizni kameraga qarating. Kamera ruxsati talab qilinadi.</p>
+  </div>
+</div>
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const canvas=document.getElementById('fx'), ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+const video=document.getElementById('video'), stats=document.getElementById('stats'), hint=document.getElementById('hint');
+const start=document.getElementById('start'), go=document.getElementById('go'), errorBox=document.getElementById('error');
+let W=0,H=0,DPR=1,handLandmarker=null,stream=null,lastDetect=0,lastVideoTime=-1;
+let hand={seen:false,x:.5,y:.5,vx:0,vy:0,speed:0,fingers:5,fist:false};
+let smooth={x:.5,y:.5},prev={x:.5,y:.5},prevT=0,frameCount=0,fps=0,fpsT=performance.now();
+let particles=[],time=0,quality=1, lastHint=0;
+const TAU=Math.PI*2, rand=(a,b)=>a+Math.random()*(b-a);
+function resize(){
+  W=innerWidth;H=innerHeight;DPR=Math.min(devicePixelRatio||1,1.5);
+  canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize',resize,{passive:true});resize();
+
+function fingerUp(lm,tip,pip){ return lm[tip].y < lm[pip].y - .018; }
+function countFingers(lm){
+  let n=0;
+  if(fingerUp(lm,8,6))n++;
+  if(fingerUp(lm,12,10))n++;
+  if(fingerUp(lm,16,14))n++;
+  if(fingerUp(lm,20,18))n++;
+  // Thumb extension: compare thumb tip with index MCP horizontally.
+  if(Math.abs(lm[4].x-lm[5].x)>Math.abs(lm[3].x-lm[5].x)+.025)n++;
+  return n;
+}
+function readHand(result,now){
+  if(result.landmarks && result.landmarks.length){
+    const lm=result.landmarks[0], wrist=lm[0], middle=lm[9];
+    const rawX=1-(wrist.x*.62+middle.x*.38), rawY=wrist.y*.62+middle.y*.38;
+    const dt=prevT?Math.max(.008,(now-prevT)/1000):.016;
+    const nx=smooth.x+(rawX-smooth.x)*.42, ny=smooth.y+(rawY-smooth.y)*.42;
+    hand.vx=(nx-prev.x)/dt; hand.vy=(ny-prev.y)/dt;
+    hand.speed=Math.min(1,Math.hypot(hand.vx,hand.vy)/2.8);
+    smooth.x=nx;smooth.y=ny;prev.x=nx;prev.y=ny;prevT=now;
+    hand.x=nx;hand.y=ny;hand.fingers=countFingers(lm);hand.fist=hand.fingers<=1;hand.seen=true;
+  }else{hand.seen=false;hand.speed*=.9;hand.vx*=.9;hand.vy*=.9;}
+}
+async function boot(){
+  go.disabled=true;go.textContent='YUKLANMOQDA...';errorBox.textContent='';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60,max:60}}});
+    video.srcObject=stream;await video.play();
+    const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    try{
+      handLandmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.55,minHandPresenceConfidence:.5,minTrackingConfidence:.5});
+    }catch(gpuErr){
+      handLandmarker=await HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.55,minHandPresenceConfidence:.5,minTrackingConfidence:.5});
+    }
+    start.style.display='none';requestAnimationFrame(loop);
+  }catch(e){
+    errorBox.textContent='Kamera yoki AI modeli ishga tushmadi: '+(e.message||e);
+    go.disabled=false;go.textContent='QAYTA URINISH';
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+  }
+}
+go.addEventListener('click',boot);
+
+function spawn(x,y,angle,radius,color,size,life=1){
+  particles.push({x,y,px:x,py:y,vx:Math.cos(angle)*rand(.2,2.4),vy:Math.sin(angle)*rand(.2,2.4),life,max:life,color,size,seed:Math.random()*10});
+}
+function drawOrb(cx,cy,now){
+  const speed=hand.seen?hand.speed:0.12;
+  const fingers=hand.seen?hand.fingers:5;
+  const base= Math.min(W,H)*(.13+fingers*.009);
+  const pulse=1+Math.sin(now*.0022)*.035+speed*.16;
+  const radius=base*pulse;
+  const hueShift=(now*.035)%360;
+  // Soft holographic glow
+  const glow=ctx.createRadialGradient(cx,cy,2,cx,cy,radius*2.25);
+  glow.addColorStop(0,'rgba(80,220,255,.14)');glow.addColorStop(.45,'rgba(150,60,255,.09)');glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,radius*2.25,0,TAU);ctx.fill();
+  const spikes=70+fingers*24;
+  for(let i=0;i<spikes;i++){
+    const a=i/spikes*TAU+now*.00022*(1+speed*3);
+    const wave=Math.sin(a*7+now*.002+fingers)*.5+Math.cos(a*13-now*.0014)*.5;
+    const len=radius*(.22+Math.abs(wave)*(.34+speed*.65));
+    const inner=radius*(.70+Math.sin(a*5+now*.001)*.035);
+    const outer=inner+len;
+    const hue=(hueShift+i/spikes*150+fingers*18)%360;
+    ctx.strokeStyle=`hsla(${hue},100%,${62+Math.sin(a*3+now*.002)*13}%,${.55+Math.abs(wave)*.4})`;
+    ctx.lineWidth=rand(.7,1.8);
+    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*inner,cy+Math.sin(a)*inner);
+    ctx.lineTo(cx+Math.cos(a)*outer,cy+Math.sin(a)*outer);ctx.stroke();
+    if(i%3===0){
+      const rr=outer+Math.sin(now*.003+i)*5;
+      ctx.fillStyle=`hsla(${(hue+45)%360},100%,72%,.8)`;
+      ctx.fillRect(cx+Math.cos(a)*rr-1,cy+Math.sin(a)*rr-1,2,2);
+    }
+  }
+  // Multiple holographic rings
+  for(let j=0;j<4;j++){
+    ctx.beginPath();ctx.ellipse(cx,cy,radius*(.48+j*.17),radius*(.48+j*.17),now*.00018*(j%2?1:-1),0,TAU);
+    ctx.strokeStyle=`hsla(${(hueShift+j*75)%360},100%,70%,${.35-j*.055})`;ctx.lineWidth=1.2;ctx.stroke();
+  }
+  const core=ctx.createRadialGradient(cx-radius*.12,cy-radius*.12,1,cx,cy,radius*.48);
+  core.addColorStop(0,'rgba(235,255,255,.22)');core.addColorStop(.5,'rgba(100,60,255,.09)');core.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=core;ctx.beginPath();ctx.arc(cx,cy,radius*.5,0,TAU);ctx.fill();
+  // Finger-count indicator dots
+  for(let i=0;i<5;i++){
+    const a=-Math.PI/2+i/5*TAU, rr=radius*.58;
+    ctx.beginPath();ctx.arc(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,3.2,0,TAU);
+    ctx.fillStyle=i<fingers?`hsl(${(hueShift+i*55)%360},100%,70%)`:'rgba(170,190,210,.22)';ctx.fill();
+  }
+  return radius;
+}
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!now)now=performance.now();
+  frameCount++;if(now-fpsT>=500){fps= Math.round(frameCount*1000/(now-fpsT));frameCount=0;fpsT=now;}
+  // Clear with a subtle trail for fluid motion.
+  ctx.fillStyle='rgba(3,3,10,.24)';ctx.fillRect(0,0,W,H);
+  if(video.readyState>=2 && handLandmarker && video.currentTime!==lastVideoTime){
+    lastVideoTime=video.currentTime;
+    // Run inference on each new camera frame; rendering remains uncapped via rAF.
+    const result=handLandmarker.detectForVideo(video,now);readHand(result,now);
+  }
+  let cx=W*.5,cy=H*.5;
+  if(hand.seen){cx=hand.x*W;cy=hand.y*H;}
+  else{cx+=Math.sin(now*.00035)*W*.06;cy+=Math.cos(now*.00042)*H*.045;}
+  const r=drawOrb(cx,cy,now);
+  // Motion streaks follow the hand's actual direction and speed.
+  if(hand.seen){
+    const amount=Math.floor(2+hand.speed*18+hand.fingers*1.5);
+    for(let i=0;i<amount;i++){
+      const a=rand(0,TAU), rr=r*rand(.75,1.45);
+      spawn(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,a+Math.atan2(hand.vy,hand.vx),rand(1,4),(now*.05+rand(0,260))%360,rand(.7,2.2),rand(.35,.9));
+    }
+  }else if(Math.random()<.45){
+    const a=rand(0,TAU);spawn(cx+Math.cos(a)*r,cy+Math.sin(a)*r,a,2,rand(170,300),1,.6);
+  }
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.life-=.016;p.x+=p.vx+hand.vx*.012;p.y+=p.vy+hand.vy*.012;p.vx*=.985;p.vy*=.985;
+    ctx.fillStyle=`hsla(${p.color},100%,70%,${Math.max(0,p.life/p.max)*.8})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,TAU);ctx.fill();
+    if(p.life<=0||p.x<-20||p.x>W+20||p.y<-20||p.y>H+20)particles.splice(i,1);
+  }
+  const gesture=!hand.seen?'QO‘L TOPILMADI':hand.fist?'MUSHT':hand.fingers+' TA BARMOQ';
+  stats.innerHTML=`CAMERA: <span style="color:#66ffc7">ON</span><br>FPS: ${fps} (ekran imkoniyati)<br>GESTURE: ${gesture}<br>HAND SPEED: ${Math.round(hand.speed*100)}%`;
+  if(now-lastHint>800){hint.textContent=hand.seen?`${gesture} • Qo‘lingizni harakatlantiring — hologramma ergashadi.`:'Kaftingizni kameraga ko‘rsating. Musht qiling yoki barmoqlaringizni oching.';lastHint=now;}
+  if(particles.length>950)particles.splice(0,particles.length-950);
+}
+</script>
+</body>
+</html>
