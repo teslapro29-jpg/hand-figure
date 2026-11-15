@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080d18">
+<title>REALITY AR — Prototype 0.1</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--panel:#111b2d;--line:#263751;--cyan:#64e6ff;--muted:#9aabc2}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:#f5f8ff;font-family:Inter,system-ui,Arial,sans-serif}
+#stage{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 30%,#1b3150,#080d18 70%)}
+#camera,#view{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#camera{display:none;transform:scaleX(-1)}#view{display:block}
+.shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(3,8,17,.72),transparent 25%,transparent 68%,rgba(3,8,17,.8))}
+header{position:absolute;z-index:3;top:env(safe-area-inset-top,12px);left:14px;right:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-weight:900;letter-spacing:.14em;font-size:14px}.brand span{color:var(--cyan)}.pill{font-size:11px;color:var(--cyan);border:1px solid #2e7081;border-radius:99px;padding:6px 9px;background:#0b1a28}
+#status{position:absolute;z-index:3;top:70px;left:14px;right:14px;text-align:center;color:#d8e8f8;font-size:13px;text-shadow:0 2px 8px #000}
+#crosshair{display:none;position:absolute;z-index:2;left:50%;top:50%;width:38px;height:38px;transform:translate(-50%,-50%);border:1px solid #b5f4ff;border-radius:50%;box-shadow:0 0 20px #53dfff88}
+#crosshair:before,#crosshair:after{content:"";position:absolute;background:#b5f4ff;left:50%;top:50%;transform:translate(-50%,-50%)}#crosshair:before{width:52px;height:1px}#crosshair:after{height:52px;width:1px}
+.panel{position:absolute;z-index:4;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:rgba(12,20,34,.92);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:20px;padding:14px;box-shadow:0 15px 50px #0008}
+.row{display:flex;gap:8px;align-items:center}.row.wrap{flex-wrap:wrap}.row.between{justify-content:space-between}
+h1{font-size:16px;margin:0 0 4px}.sub{font-size:12px;color:var(--muted);line-height:1.45}
+button,select{font:inherit;color:#f5f8ff;background:#17263d;border:1px solid #344c6c;border-radius:12px;padding:11px 13px}
+button{cursor:pointer;font-weight:700}button.primary{background:linear-gradient(135deg,#0d9bb8,#1766bd);border:0;color:white;flex:1}
+button:disabled{opacity:.4;cursor:not-allowed}.objects{display:flex;gap:7px;margin:12px 0;overflow:auto}.objects button{min-width:74px;padding:9px 10px;font-size:12px}.objects button.active{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan) inset;color:var(--cyan)}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.controls button{font-size:13px}
+#toast{position:absolute;z-index:5;top:112px;left:50%;transform:translateX(-50%);background:#13243b;border:1px solid #42617f;padding:9px 13px;border-radius:12px;font-size:12px;display:none;max-width:90%;text-align:center}
+#fallbackNote{margin-top:9px;color:#f3cc7c;font-size:11px;line-height:1.4}
+@media(min-width:700px){.panel{left:auto;right:22px;bottom:22px;width:370px}#status{top:80px}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="camera" playsinline muted autoplay></video>
+  <canvas id="view"></canvas>
+  <div class="shade"></div>
+  <div id="crosshair"></div>
+  <header><div class="brand">REALITY<span> AR</span></div><div class="pill">PROTOTYPE 0.1</div></header>
+  <div id="status">Haqiqiy makonga virtual obyekt joylashtirish prototipi</div>
+  <div id="toast"></div>
+  <section class="panel">
+    <div class="row between"><div><h1>AR laboratoriya</h1><div class="sub" id="modeText">WebXR mavjud bo‘lsa, haqiqiy yuzaga obyekt qo‘yiladi.</div></div><div class="pill" id="engineTag">WEB AR</div></div>
+    <div class="objects" id="objects">
+      <button class="active" data-kind="box">🧊 Kub</button>
+      <button data-kind="sphere">🔮 Shar</button>
+      <button data-kind="torus">🪐 Halqa</button>
+      <button data-kind="cone">🔺 Konus</button>
+    </div>
+    <div class="controls">
+      <button class="primary" id="start">Kamerani / AR'ni boshlash</button>
+      <button id="place" disabled>＋ Joylashtirish</button>
+      <button id="remove" disabled>Obyektni o‘chirish</button>
+      <button id="reset">Qayta boshlash</button>
+    </div>
+    <div id="fallbackNote">Eslatma: WebXR AR faqat mos Android brauzeri, HTTPS va ARCore qo‘llab-quvvatlaydigan qurilmada ishlaydi. Kamera fallback rejimi fazoviy kuzatuvni taqlid qilmaydi.</div>
+  </section>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $=id=>document.getElementById(id);
+const video=$('camera'), canvas=$('view'), status=$('status'), toast=$('toast');
+let renderer,scene,camera,reticle,hitSource=null,viewerSpace=null,session=null;
+let selected='box',placed=[],cameraStream=null,mode='idle',hitPose=null,raf=0;
+const clock=new THREE.Clock();
+
+function say(msg){toast.textContent=msg;toast.style.display='block';clearTimeout(say.t);say.t=setTimeout(()=>toast.style.display='none',2600)}
+function makeRenderer(){
+  renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.01,50);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x506080,2));
+  const light=new THREE.DirectionalLight(0xffffff,2.4);light.position.set(2,4,3);scene.add(light);
+  reticle=new THREE.Mesh(new THREE.RingGeometry(.09,.115,32),new THREE.MeshBasicMaterial({color:0x64e6ff}));
+  reticle.rotation.x=-Math.PI/2;reticle.matrixAutoUpdate=false;reticle.visible=false;scene.add(reticle);
+}
+function material(){return new THREE.MeshStandardMaterial({color:0x39c9ef,metalness:.32,roughness:.28,emissive:0x06384a,emissiveIntensity:.45})}
+function createObject(kind){
+  let g;
+  if(kind==='sphere')g=new THREE.SphereGeometry(.12,32,24);
+  else if(kind==='torus')g=new THREE.TorusKnotGeometry(.105,.035,100,16);
+  else if(kind==='cone')g=new THREE.ConeGeometry(.13,.27,32);
+  else g=new THREE.BoxGeometry(.22,.22,.22);
+  const mesh=new THREE.Mesh(g,material());mesh.userData.kind=kind;mesh.castShadow=true;mesh.position.y=.12;
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.18,.006,8,48),new THREE.MeshBasicMaterial({color:0x64e6ff}));
+  ring.rotation.x=Math.PI/2;ring.position.y=-.105;mesh.add(ring);
+  return mesh;
+}
+function addAt(matrix){
+  const obj=createObject(selected);obj.position.setFromMatrixPosition(matrix);
+  obj.quaternion.setFromRotationMatrix(matrix);obj.position.y+=.12;
+  scene.add(obj);placed.push(obj);$('remove').disabled=false;say('Obyekt haqiqiy yuzaga joylashtirildi.');
+}
+function renderLoop(){
+  if(!renderer)return;
+  for(const o of placed){o.rotation.y+=.006;o.position.y=.12+Math.sin(performance.now()*.0015+o.id)*.018;}
+  renderer.render(scene,camera);
+}
+function animate(){raf=requestAnimationFrame(animate);renderLoop()}
+function resize(){if(!renderer)return;renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);
+makeRenderer();animate();
+
+async function startWebXR(){
+  if(!navigator.xr||!await navigator.xr.isSessionSupported('immersive-ar'))throw Error('Bu brauzer yoki qurilmada WebXR AR qo‘llab-quvvatlanmaydi.');
+  session=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:document.body}});
+  renderer.xr.enabled=true;
+  await renderer.xr.setSession(session);
+  const gl=renderer.getContext();
+  viewerSpace=await session.requestReferenceSpace('viewer');
+  hitSource=await session.requestHitTestSource({space:viewerSpace});
+  const refSpace=await session.requestReferenceSpace('local');
+  mode='xr';$('engineTag').textContent='WEBXR HIT TEST';$('modeText').textContent='Telefonni sekin harakatlantiring; ko‘k halqa yuzani ko‘rsatadi.';
+  $('crosshair').style.display='block';$('place').disabled=false;$('remove').disabled=false;
+  status.textContent='Yuzani qidirmoqda…';say('AR sessiyasi boshlandi.');
+  session.addEventListener('end',()=>{mode='idle';hitSource=null;session=null;$('crosshair').style.display='none';$('place').disabled=true;status.textContent='AR sessiyasi tugadi.'});
+  renderer.setAnimationLoop((time,frame)=>{
+    if(frame&&hitSource){const hits=frame.getHitTestResults(hitSource);if(hits.length){const pose=hits[0].getPose(refSpace);if(pose){reticle.visible=true;reticle.matrix.fromArray(pose.transform.matrix);hitPose=new THREE.Matrix4().fromArray(pose.transform.matrix);status.textContent='Yuza topildi — “Joylashtirish” tugmasini bosing.'}}else{reticle.visible=false;hitPose=null;status.textContent='Yuzani qidirmoqda…'}}
+    for(const o of placed)o.rotation.y+=.004;
+    renderer.render(scene,camera);
+  });
+}
+async function startFallback(){
+  cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+  video.srcObject=cameraStream;video.style.display='block';await video.play();
+  mode='camera';$('engineTag').textContent='CAMERA PREVIEW';$('modeText').textContent='Kamera ishlayapti. Bu rejimda obyekt ekran koordinatasida ko‘rsatiladi, fazoga mahkamlanmaydi.';
+  $('place').disabled=false;$('remove').disabled=false;
+  camera.position.set(0,0,0);camera.lookAt(0,0,-1);
+  say('Kamera ishga tushdi. WebXR mavjud emas — preview rejimi.');
+  // Camera preview: create a clearly labelled virtual object in front of the camera.
+  status.textContent='Preview rejimi — obyektni ekranda ko‘rish mumkin.';
+}
+$('start').addEventListener('click',async()=>{
+  $('start').disabled=true;
+  try{await startWebXR()}catch(e){
+    console.warn(e);
+    try{await startFallback()}catch(camErr){status.textContent='Ishga tushmadi: '+camErr.message;say('Kamera ruxsati yoki HTTPS talab qilinadi.');$('start').disabled=false}
+  }
+});
+$('place').addEventListener('click',()=>{
+  if(mode==='xr'&&hitPose){addAt(hitPose);return}
+  if(mode==='camera'){
+    const obj=createObject(selected);obj.position.set(0,0,-1.1);obj.scale.setScalar(1.25);scene.add(obj);placed.push(obj);$('remove').disabled=false;say('Preview obyekt yaratildi — bu hali haqiqiy plane tracking emas.');return;
+  }
+  say('Avval AR yoki kamerani ishga tushiring.');
+});
+$('remove').addEventListener('click',()=>{const o=placed.pop();if(o){scene.remove(o);o.geometry.dispose();o.material.dispose()}$('remove').disabled=!placed.length});
+$('reset').addEventListener('click',()=>{while(placed.length){const o=placed.pop();scene.remove(o);o.geometry.dispose();o.material.dispose()}$('remove').disabled=true;say('Sahna tozalandi.')});
+$('objects').addEventListener('click',e=>{const b=e.target.closest('button[data-kind]');if(!b)return;selected=b.dataset.kind;document.querySelectorAll('#objects button').forEach(x=>x.classList.toggle('active',x===b));say('Tanlandi: '+b.textContent.trim())});
+</script>
+</body>
+</html>
