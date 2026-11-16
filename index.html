@@ -1,175 +1,552 @@
 <!DOCTYPE html>
 <html lang="uz">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Qilich va Kamon</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#050816">
+<meta name="description" content="Hand Figure Ultimate — real-time hand tracking and neon particle visualizer.">
+<title>HAND FIGURE ULTIMATE</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;height:100%;background:#0b0d12;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
-  #wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-  video,canvas{position:absolute;max-width:100%;max-height:100%;width:auto;height:auto}
-  video{transform:scaleX(-1);opacity:.55}
-  #ui{position:absolute;top:12px;left:12px;right:12px;z-index:5;text-align:center;font-size:14px;text-shadow:0 1px 4px #000}
-  #mode{font-size:20px;font-weight:700;margin-top:4px}
-  button{position:absolute;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%);padding:16px 28px;font-size:18px;border:0;border-radius:12px;background:#ffb703;color:#111;font-weight:700}
+:root{--bg:#050816;--panel:rgba(12,20,43,.88);--border:rgba(80,160,255,.2);--cyan:#37e7ff;--purple:#9b65ff;--pink:#ff4fbc;--green:#70ffb1;--text:#edf5ff;--muted:#8594b5}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);font-family:Inter,sans-serif;background:radial-gradient(ellipse at 15% 0%,#14214c,transparent 40%),radial-gradient(ellipse at 90% 20%,#28103e,transparent 35%),var(--bg)}
+button,select,input{font:inherit}button{cursor:pointer}.app{width:min(1550px,100%);margin:auto;padding:18px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px}.logo{width:46px;height:46px;display:grid;place-items:center;border:1px solid #37e7ff88;border-radius:14px;color:var(--cyan);font-size:25px;box-shadow:0 0 25px #37e7ff33}
+h1{font:800 18px Orbitron,sans-serif;letter-spacing:1.5px;margin:0}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:2px;margin-top:5px}.header-right{display:flex;align-items:center;gap:10px}.status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);border:1px solid var(--border);padding:10px 13px;border-radius:30px}.status-dot{width:8px;height:8px;border-radius:50%;background:#59647d}.status-dot.live{background:var(--green);box-shadow:0 0 12px var(--green)}
+.btn{background:#111b37;color:white;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:11px;font-weight:700;transition:.2s}.btn:hover{border-color:var(--cyan);box-shadow:0 0 18px #37e7ff33}.btn.primary{background:linear-gradient(110deg,#087fa9,#6040b6);border-color:#54dfff77}.btn.danger{color:#ff8eaa}button:disabled{opacity:.4;cursor:not-allowed}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;overflow:hidden;backdrop-filter:blur(15px);box-shadow:0 15px 50px #0005}.stage-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);font:600 11px Orbitron;letter-spacing:1px}.stage-head span{color:var(--muted);font:11px Inter}
+.stage{position:relative;height:min(68vh,720px);min-height:390px;overflow:hidden;background:radial-gradient(ellipse at center,#111e40,#080d20 60%,#050816)}#art{position:absolute;inset:0;width:100%;height:100%}
+.overlay{position:absolute;top:18px;left:18px;z-index:2;pointer-events:none}#gestureName{font:800 clamp(18px,3vw,29px) Orbitron;text-shadow:0 0 20px #37e7ff99}#gestureDesc{color:#9baaca;font-size:11px;margin-top:7px}
+.camera-preview{position:absolute;top:14px;right:14px;width:160px;aspect-ratio:4/3;border:1px solid #37e7ff88;border-radius:12px;overflow:hidden;background:#030713;z-index:3}#video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.camera-label{position:absolute;bottom:6px;left:7px;padding:4px 6px;font-size:9px;background:#030713bb;border-radius:5px}
+.hint{position:absolute;inset:0;display:grid;place-content:center;text-align:center;pointer-events:none}.hint-icon{font-size:55px;filter:drop-shadow(0 0 18px #37e7ff88)}.hint p{color:#9aa9ca;font-size:12px;line-height:1.6;max-width:260px}
+.stage-footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 15px;color:var(--muted);font-size:10px;border-top:1px solid var(--border)}.metrics{display:flex;gap:16px}.metrics b{color:#d8faff}
+.sidebar{display:flex;flex-direction:column;gap:13px}.panel{padding:15px;background:var(--panel);border:1px solid var(--border);border-radius:15px}.panel h2{font:600 11px Orbitron;letter-spacing:1px;margin:0 0 14px}.button-row{display:flex;gap:8px}.button-row button{flex:1}
+.field{margin:14px 0}.field-title{display:flex;justify-content:space-between;color:#aebcda;font-size:11px;margin-bottom:8px}.field-title output{color:var(--cyan)}input[type=range]{width:100%;accent-color:var(--cyan)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin:13px 0;font-size:11px;color:#b9c6e0}.toggle{appearance:none;width:36px;height:20px;background:#293653;border-radius:30px;position:relative;cursor:pointer}.toggle:checked{background:#0789a4}.toggle:after{content:"";position:absolute;width:14px;height:14px;top:3px;left:3px;background:white;border-radius:50%;transition:.2s}.toggle:checked:after{left:19px}
+select{width:100%;padding:10px;color:white;background:#0b1430;border:1px solid var(--border);border-radius:9px;font-size:11px}.palette{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.swatch{height:27px;border-radius:7px;border:2px solid #ffffff22}.swatch.active{outline:2px solid white;outline-offset:2px}
+.gesture-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}.gesture-btn{min-height:48px;position:relative;background:#0b1430;border:1px solid #ffffff17;border-radius:9px;font-size:21px;color:white}.gesture-btn small{position:absolute;bottom:3px;left:0;right:0;font-size:7px;color:#91a2c4}.gesture-btn.active{border-color:var(--cyan);background:#12334c;box-shadow:0 0 15px #37e7ff33}
+.description{color:var(--muted);font-size:10px;line-height:1.7}.toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,20px);opacity:0;padding:12px 18px;border:1px solid #37e7ff88;border-radius:10px;background:#0b1934;font-size:12px;z-index:10;transition:.25s;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
+.loading{position:absolute;inset:0;z-index:5;display:grid;place-content:center;text-align:center;background:#050816df}.loading[hidden]{display:none}.spinner{width:34px;height:34px;border:3px solid #29395d;border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;margin:auto auto 12px}@keyframes spin{to{transform:rotate(360deg)}}footer{text-align:center;color:#53617f;font-size:10px;padding:20px 0}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.gestures-panel{grid-column:1/-1}}
+@media(max-width:560px){.app{padding:10px}h1{font-size:14px}.brand small{font-size:7px}.logo{width:38px;height:38px}.status{display:none}.stage{height:55vh;min-height:340px}.camera-preview{width:110px;top:9px;right:9px}.overlay{top:12px;left:11px}.sidebar{grid-template-columns:1fr}.gestures-panel{grid-column:auto}}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <video id="v" playsinline muted></video>
-  <canvas id="c"></canvas>
-  <div id="ui">✊ Mushtni siq = QILICH &nbsp; ✋ Kaftni och = KAMON &nbsp; 🤏 Ikkinchi qo‘l bilan tort va qo‘yib yubor = O‘Q
-    <div id="mode">Kamerani yoqing</div></div>
-  <button id="start">Boshlash</button>
+<div class="app">
+<header>
+  <div class="brand"><div class="logo">✳</div><div><h1>HAND FIGURE <span style="color:#37e7ff">ULTIMATE</span></h1><small>REAL-TIME GESTURE VISUAL ENGINE</small></div></div>
+  <div class="header-right"><div class="status"><i class="status-dot" id="liveDot"></i><span id="statusText">CAMERA OFFLINE</span></div><button class="btn" id="fullscreenBtn">⛶ FULLSCREEN</button></div>
+</header>
+<main class="layout">
+<section class="card">
+  <div class="stage-head"><strong>✧ PARTICLE VISUALIZER</strong><span id="fps">FPS --</span></div>
+  <div class="stage" id="stage">
+    <canvas id="art"></canvas>
+    <div class="overlay"><div id="gestureName">READY</div><div id="gestureDesc">Kamerani ishga tushiring</div></div>
+    <div class="hint" id="hint"><div class="hint-icon">🖐️</div><p>Qo‘lingizni kamera oldiga olib keling.<br>Neon shakl harakatingizga javob beradi.</p></div>
+    <div class="camera-preview"><video id="video" playsinline muted></video><div class="camera-label">LIVE CAMERA</div></div>
+    <div class="loading" id="loading" hidden><div><div class="spinner"></div><p id="loadingText">AI model yuklanmoqda...</p></div></div>
+  </div>
+  <div class="stage-footer"><div class="metrics"><span>HANDS <b id="handCount">0</b></span><span>PARTICLES <b id="particleCount">900</b></span><span>GESTURE <b id="confidence">--</b></span></div><span>MEDIAPIPE HAND LANDMARKS</span></div>
+</section>
+<aside class="sidebar">
+<section class="panel">
+  <h2>◉ CAMERA CONTROL</h2>
+  <div class="button-row"><button class="btn primary" id="startBtn">▶ START</button><button class="btn danger" id="stopBtn" disabled>■ STOP</button></div>
+  <div class="toggle-row"><span>Mirror camera</span><input class="toggle" id="mirrorToggle" type="checkbox" checked></div>
+  <div class="toggle-row"><span>Hand skeleton</span><input class="toggle" id="skeletonToggle" type="checkbox"></div>
+  <div class="toggle-row"><span>Auto gesture detect</span><input class="toggle" id="autoToggle" type="checkbox" checked></div>
+</section>
+<section class="panel">
+  <h2>✧ VISUAL SETTINGS</h2>
+  <div class="field"><div class="field-title"><label>Particle count</label><output id="particleValue">900</output></div><input id="particleRange" type="range" min="150" max="2400" step="50" value="900"></div>
+  <div class="field"><div class="field-title"><label>Glow intensity</label><output id="glowValue">70%</output></div><input id="glowRange" type="range" min="0" max="100" value="70"></div>
+  <div class="field"><div class="field-title"><label>Particle size</label><output id="sizeValue">2.0</output></div><input id="sizeRange" type="range" min=".5" max="5" step=".1" value="2"></div>
+  <div class="field"><div class="field-title"><label>Animation speed</label><output id="speedValue">1.0×</output></div><input id="speedRange" type="range" min=".2" max="3" step=".1" value="1"></div>
+  <div class="field"><div class="field-title">Visual style</div><select id="shapeSelect"><option value="neon">Neon particles</option><option value="wire">Wireframe</option><option value="orbit">Orbital rings</option><option value="plasma">Plasma cloud</option></select></div>
+  <div class="field"><div class="field-title">Color palette</div><div class="palette" id="palette"></div></div>
+</section>
+<section class="panel gestures-panel">
+  <h2>☝ GESTURE LIBRARY</h2><div class="gesture-grid" id="gestureGrid"></div>
+  <p class="description">Tugmani bosib vizual presetni sinang. Avtomatik aniqlash yoqilganida kamera qo‘l harakatini kuzatadi.</p>
+</section>
+<section class="panel">
+  <h2>TOOLS</h2>
+  <div class="button-row"><button class="btn" id="pauseBtn">Ⅱ PAUSE</button><button class="btn" id="clearBtn">⌫ CLEAR</button></div>
+  <div class="toggle-row"><span>Background stars</span><input class="toggle" id="starsToggle" type="checkbox" checked></div>
+  <div class="toggle-row"><span>Trail effect</span><input class="toggle" id="trailToggle" type="checkbox" checked></div>
+  <div class="toggle-row"><span>Sound feedback</span><input class="toggle" id="soundToggle" type="checkbox"></div>
+</section>
+</aside>
+</main>
+<footer>HAND FIGURE ULTIMATE · CREATIVE INTERACTION ENGINE</footer>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<div class="toast" id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 <script>
-const video = document.getElementById('v'), cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const modeEl = document.getElementById('mode');
-let W = 1280, H = 720;
-const S = { hands: [], weapon: null, mode: 'none', pinching: false, pinchPt: null, pull: 0, arrows: [], sparks: [] };
+"use strict";
+const $=id=>document.getElementById(id);
+const canvas=$("art"),ctx=canvas.getContext("2d"),video=$("video"),stage=$("stage");
+const TAU=Math.PI*2;
+let particles=[],stars=[],running=false,paused=false,camera=null,handResults=null;
+let activeGesture="open",lastGesture="",colorSet=0,manualGesture=false;
+let frameCount=0,fpsStamp=0,audioContext=null;
 
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const lerp = (a, b, t) => a + (b - a) * t;
+const palettes=[
+ ["#37e7ff","#8b7bff","#ffffff"],
+ ["#ff4fbc","#ff9b55","#fff2a8"],
+ ["#7dffb2","#37e7ff","#eafff4"],
+ ["#b78aff","#ff5cff","#f5eaff"],
+ ["#ffdf70","#ff873e","#fff4c4"],
+ ["#f5f7ff","#91a8ff","#d4e3ff"]
+];
 
-function analyze(lm) {
-  const p = lm.map(q => ({ x: (1 - q.x) * W, y: q.y * H }));
-  const palm = dist(p[0], p[9]);
-  let curled = 0;
-  [[8, 6], [12, 10], [16, 14], [20, 18]].forEach(([tip, pip]) => { if (dist(p[tip], p[0]) < dist(p[pip], p[0])) curled++; });
-  const pinch = dist(p[4], p[8]) < palm * 0.45;
-  return {
-    p, palm,
-    fist: curled >= 3,
-    open: curled <= 1,
-    pinch,
-    center: { x: (p[0].x + p[9].x) / 2, y: (p[0].y + p[9].y) / 2 },
-    pinchPt: { x: (p[4].x + p[8].x) / 2, y: (p[4].y + p[8].y) / 2 },
-    up: { x: (p[9].x - p[0].x) / (palm || 1), y: (p[9].y - p[0].y) / (palm || 1) }
-  };
-}
+const gestures=[
+ ["👍","LIKE","thumb"],["👊","FIST","fist"],["🙏","PRAY","pray"],
+ ["🫶","HEART","heart"],["🙌","RAISE","raise"],["👐","OPEN","open"],
+ ["🤲","CUP","cup"],["🤜","PUNCH","fist"],["✊","POWER","fist"],
+ ["🫳","PALM DOWN","down"],["🫴","PALM UP","up"],["🫱","HAND RIGHT","right"],
+ ["🫲","HAND LEFT","left"],["🫸","PUSH RIGHT","right"],["🫷","PUSH LEFT","left"],
+ ["👋","WAVE","wave"],["🤚","STOP","stop"],["🖐️","FIVE","open"],
+ ["✋","PALM","open"],["✌️","PEACE","peace"],["🤞","LUCK","cross"],
+ ["🫰","SNAP","snap"],["🤙","CALL","call"],["🤌","PINCHED","pinch"],
+ ["🤏","SMALL","pinch"],["👌","OK","ok"],["🫵","YOU","point"],
+ ["👉","RIGHT","right"],["👈","LEFT","left"],["☝️","UP","up"],
+ ["👆","POINT UP","up"],["👇","DOWN","down"],["🖕","FINGER","point"],
+ ["✍️","WRITE","write"],["🤝","SHAKE","shake"]
+];
 
-function onResults(r) {
-  if (cv.width !== W) { cv.width = W; cv.height = H; }
-  const hs = (r.multiHandLandmarks || []).map(analyze).sort((a, b) => a.center.x - b.center.x);
-  S.hands = hs;
-  // chap tomondagi qo'l = qurol qo'li, o'ngdagisi = tortuvchi qo'l
-  const wh = hs[0] || null, dh = hs.length > 1 ? hs[hs.length - 1] : null;
-  S.weapon = wh;
-  if (wh) S.mode = wh.fist ? 'sword' : (wh.open ? 'bow' : S.mode === 'none' ? 'bow' : S.mode);
-  else S.mode = 'none';
-
-  const pinchNow = !!(dh && dh.pinch && S.mode === 'bow');
-  if (pinchNow) {
-    S.pinchPt = dh.pinchPt;
-    S.pull = dist(dh.pinchPt, wh.center);
-  }
-  if (S.pinching && !pinchNow && S.mode === 'bow' && wh && S.pinchPt) {
-    const minPull = wh.palm * 1.3;
-    if (S.pull > minPull) fire(wh.center, S.pinchPt, S.pull);
-  }
-  if (!pinchNow) { S.pull = 0; }
-  S.pinching = pinchNow;
-  S.dh = dh;
-  modeEl.textContent = S.mode === 'sword' ? '⚔️ QILICH' : S.mode === 'bow' ? (S.pinching ? '🏹 Tortilmoqda... qo‘yib yubor!' : '🏹 KAMON') : 'Qo‘lingizni ko‘rsating';
-}
-
-function fire(bowC, pinchPt, pull) {
-  const dx = bowC.x - pinchPt.x, dy = bowC.y - pinchPt.y, d = Math.hypot(dx, dy) || 1;
-  const speed = Math.min(60, 16 + pull * 0.07);
-  S.arrows.push({ x: bowC.x, y: bowC.y, vx: dx / d * speed, vy: dy / d * speed, life: 0 });
-}
-
-function drawSword(h) {
-  const ux = h.up.x, uy = h.up.y, nx = -uy, ny = ux;
-  const o = h.center, L = h.palm * 4.2;
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  const ang = Math.atan2(uy, ux) + Math.PI / 2;
-  ctx.rotate(ang);
-  ctx.shadowColor = '#7dd3fc'; ctx.shadowBlur = 25;
-  const g = ctx.createLinearGradient(-8, 0, 8, 0);
-  g.addColorStop(0, '#94a3b8'); g.addColorStop(.5, '#f8fafc'); g.addColorStop(1, '#94a3b8');
-  ctx.fillStyle = g;
-  const bw = h.palm * 0.22;
-  ctx.beginPath(); ctx.moveTo(-bw, -h.palm * .55); ctx.lineTo(-bw, -L); ctx.lineTo(0, -L - bw * 2.5); ctx.lineTo(bw, -L); ctx.lineTo(bw, -h.palm * .55); ctx.closePath(); ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#facc15'; ctx.fillRect(-bw * 2.6, -h.palm * .62, bw * 5.2, bw * .9);
-  ctx.fillStyle = '#7c2d12'; ctx.fillRect(-bw * .6, -h.palm * .55 + bw * .3, bw * 1.2, h.palm * .9);
-  ctx.restore();
-}
-
-function drawBow(h) {
-  const tgt = (S.pinching && S.pinchPt) ? S.pinchPt : (S.dh ? S.dh.center : { x: h.center.x + 100, y: h.center.y });
-  let dx = h.center.x - tgt.x, dy = h.center.y - tgt.y;
-  const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;           // otish yo'nalishi
-  const nx = -dy, ny = dx, R = h.palm * 2.6;
-  const A = { x: h.center.x + nx * R, y: h.center.y + ny * R };
-  const B = { x: h.center.x - nx * R, y: h.center.y - ny * R };
-  const bulge = h.palm * 1.2;
-  const C = { x: h.center.x + dx * bulge * 2, y: h.center.y + dy * bulge * 2 };
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 18;
-  ctx.strokeStyle = '#b45309'; ctx.lineWidth = 10;
-  ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.quadraticCurveTo(C.x, C.y, B.x, B.y); ctx.stroke();
-  ctx.shadowBlur = 0;
-  // ip
-  const mid = (S.pinching && S.pinchPt) ? S.pinchPt : { x: h.center.x + dx * bulge, y: h.center.y + dy * bulge };
-  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(mid.x, mid.y); ctx.lineTo(B.x, B.y); ctx.stroke();
-  // joylangan o'q
-  if (S.pinching) {
-    const len = h.palm * 2.4;
-    drawArrow(mid.x, mid.y, -dx, -dy, len, true);
-    const pct = Math.min(1, S.pull / (h.palm * 4));
-    ctx.fillStyle = `hsl(${120 * (1 - pct)},90%,55%)`;
-    ctx.fillRect(h.center.x - 40, h.center.y + R + 20, 80 * pct, 8);
-  }
-  ctx.restore();
-}
-
-function drawArrow(x, y, dx, dy, len, fromTail) {
-  // (x,y) = dumi; (dx,dy) = ketayotgan yo'nalish
-  const hx = x + dx * len, hy = y + dy * len;
-  ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 4;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(hx, hy); ctx.stroke();
-  ctx.fillStyle = '#e5e7eb';
-  const nx = -dy, ny = dx;
-  ctx.beginPath(); ctx.moveTo(hx + dx * 18, hy + dy * 18); ctx.lineTo(hx + nx * 8, hy + ny * 8); ctx.lineTo(hx - nx * 8, hy - ny * 8); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#f87171';
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + nx * 7 - dx * 10, y + ny * 7 - dy * 10); ctx.lineTo(x + dx * 10, y + dy * 10); ctx.lineTo(x - nx * 7 - dx * 10, y - ny * 7 - dy * 10); ctx.closePath(); ctx.fill();
-}
-
-function frame() {
-  ctx.clearRect(0, 0, W, H);
-  const h = S.weapon;
-  if (h) { if (S.mode === 'sword') drawSword(h); else if (S.mode === 'bow') drawBow(h); }
-  for (let i = S.arrows.length - 1; i >= 0; i--) {
-    const a = S.arrows[i];
-    a.x += a.vx; a.y += a.vy; a.vy += 0.25; a.life++;
-    const sp = Math.hypot(a.vx, a.vy) || 1;
-    ctx.save(); ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 12;
-    drawArrow(a.x - a.vx / sp * 70, a.y - a.vy / sp * 70, a.vx / sp, a.vy / sp, 70, true);
-    ctx.restore();
-    if (a.x < -100 || a.x > W + 100 || a.y > H + 100 || a.y < -300 || a.life > 240) S.arrows.splice(i, 1);
-  }
-  requestAnimationFrame(frame);
-}
-
-document.getElementById('start').onclick = async function () {
-  this.remove();
-  modeEl.textContent = 'Model yuklanmoqda...';
-  const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
-  hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
-  hands.onResults(onResults);
-  video.addEventListener('loadedmetadata', () => { W = video.videoWidth; H = video.videoHeight; cv.width = W; cv.height = H; });
-  const cam = new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width: 1280, height: 720 });
-  try { await cam.start(); } catch (e) { modeEl.textContent = 'Kameraga ruxsat bering (HTTPS kerak)'; return; }
-  frame();
+const shapeFor={
+ open:"star",fist:"orb",peace:"peace",point:"arrow",thumb:"star",
+ heart:"heart",pray:"mandala",raise:"burst",wave:"wave",ok:"ring",
+ pinch:"diamond",call:"call",cross:"cross",stop:"shield",up:"arrow",
+ down:"arrow",left:"arrow",right:"arrow",cup:"bowl",write:"spiral",
+ shake:"double",snap:"burst"
 };
+
+const descriptions={
+ open:"Ochiq kaft — energiya portlashi",fist:"Musht — energiya yadrosi",
+ peace:"Tinchlik — ikki nurli yo‘l",point:"Ko‘rsatish — yo‘nalgan lazer",
+ thumb:"Bosh barmoq — yulduzcha",heart:"Yurak — pulsatsiyalanuvchi shakl",
+ pray:"Duo — simmetrik aura",raise:"Yuqoriga oqim",wave:"To‘lqinli harakat",
+ ok:"OK — halqa geometriyasi",pinch:"Chimdim — ixcham yadro",
+ call:"Telefon — egri orbit",cross:"Kesishuvchi nurlar",stop:"To‘xta — qalqon",
+ up:"Yuqoriga yo‘nalgan nur",down:"Pastga oqim",left:"Chapga oqim",
+ right:"O‘ngga oqim",cup:"Kosmik kosa",write:"Yozuvchi spiral",
+ shake:"Ikki energiya",snap:"Impuls portlashi"
+};
+
+function random(min,max){return min+Math.random()*(max-min)}
+function width(){return stage.clientWidth}
+function height(){return stage.clientHeight}
+
+function resize(){
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+ canvas.width=Math.round(width()*dpr);
+ canvas.height=Math.round(height()*dpr);
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ createStars();
+}
+
+function createStars(){
+ stars=Array.from({length:150},()=>({
+  x:random(0,width()),y:random(0,height()),
+  r:random(.3,1.5),a:random(.2,.8),phase:random(0,TAU)
+ }));
+}
+
+function createParticles(){
+ const count=Number($("particleRange").value);
+ particles=Array.from({length:count},()=>({
+  x:random(0,width()),y:random(0,height()),
+  vx:random(-.4,.4),vy:random(-.4,.4),
+  r:random(.5,2),a:random(.2,1),phase:random(0,TAU)
+ }));
+ $("particleCount").textContent=count;
+}
+
+function colors(){return palettes[colorSet]}
+
+function buildPalette(){
+ const root=$("palette");root.innerHTML="";
+ palettes.forEach((p,i)=>{
+  const b=document.createElement("button");
+  b.className="swatch"+(i===colorSet?" active":"");
+  b.style.background=`linear-gradient(135deg,${p[0]},${p[1]},${p[2]})`;
+  b.onclick=()=>{colorSet=i;buildPalette()};
+  root.appendChild(b);
+ });
+}
+
+function buildGestures(){
+ const root=$("gestureGrid");
+ gestures.forEach(([emoji,name,type])=>{
+  const b=document.createElement("button");
+  b.className="gesture-btn";
+  b.innerHTML=`${emoji}<small>${name}</small>`;
+  b.onclick=()=>{
+   manualGesture=true;setGesture(type,name,1);
+   document.querySelectorAll(".gesture-btn").forEach(x=>x.classList.remove("active"));
+   b.classList.add("active");
+  };
+  root.appendChild(b);
+ });
+}
+
+function beep(){
+ try{
+  audioContext=audioContext||(new(window.AudioContext||window.webkitAudioContext)());
+  const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();
+  oscillator.frequency.value=450+Math.random()*250;
+  gain.gain.setValueAtTime(.03,audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+.12);
+  oscillator.connect(gain);gain.connect(audioContext.destination);
+  oscillator.start();oscillator.stop(audioContext.currentTime+.13);
+ }catch(e){}
+}
+
+function setGesture(type,label,confidence){
+ if(type===activeGesture&&label===lastGesture)return;
+ activeGesture=type;lastGesture=label;
+ $("gestureName").textContent=label.toUpperCase();
+ $("gestureDesc").textContent=descriptions[type]||label;
+ $("confidence").textContent=confidence?Math.round(confidence*100)+"%":"--";
+ if($("soundToggle").checked)beep();
+}
+
+function fingerUp(hand,tip,pip){return hand[tip].y<hand[pip].y-.025}
+function distance(hand,a,b){return Math.hypot(hand[a].x-hand[b].x,hand[a].y-hand[b].y)}
+
+function classifyGesture(hand){
+ if(!hand||hand.length<21)return null;
+ const index=fingerUp(hand,8,6),middle=fingerUp(hand,12,10);
+ const ring=fingerUp(hand,16,14),pinky=fingerUp(hand,20,18);
+ const count=[index,middle,ring,pinky].filter(Boolean).length;
+ const thumbUp=hand[4].y<hand[3].y-.04;
+ const thumbDown=hand[4].y>hand[3].y+.05;
+ const thumbIndexDistance=distance(hand,4,8);
+
+ if(count===0&&thumbUp)return "thumb";
+ if(count===0&&thumbDown)return "down";
+ if(count===0)return "fist";
+ if(thumbIndexDistance<.055&&count>=2)return "ok";
+ if(thumbIndexDistance<.075)return "pinch";
+ if(index&&middle&&!ring&&!pinky)return "peace";
+ if(index&&!middle&&!ring&&!pinky)return "point";
+ if(pinky&&!index&&!middle&&!ring)return "call";
+ if(index&&pinky&&!middle&&!ring)return "cross";
+ if(count===4)return "open";
+ if(count===3)return "raise";
+ return count>=2?"open":"point";
+}
+
+function onResults(results){
+ handResults=results;
+ const hands=results.multiHandLandmarks||[];
+ $("handCount").textContent=hands.length;
+ $("hint").style.display=hands.length?"none":"grid";
+
+ if(hands.length&&$("autoToggle").checked&&!manualGesture){
+  const type=classifyGesture(hands[0]);
+  if(type){
+   const found=gestures.find(g=>g[2]===type);
+   setGesture(type,found?found[1]:type,.82);
+  }
+ }
+ if(!hands.length){
+  $("confidence").textContent="--";
+  manualGesture=false;
+ }
+}
+
+function drawSkeleton(hand){
+ const connections=[[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],
+ [9,13,14,15,16],[13,17,18,19,20],[0,17]];
+ ctx.save();ctx.strokeStyle="#55edff";ctx.lineWidth=1.5;
+ ctx.shadowBlur=10;ctx.shadowColor="#31eaff";
+ connections.forEach(line=>{
+  ctx.beginPath();
+  line.forEach((id,i)=>{
+   const p=hand[id],x=(1-p.x)*width(),y=p.y*height();
+   if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+ });
+ hand.forEach(p=>{
+  ctx.beginPath();ctx.arc((1-p.x)*width(),p.y*height(),2.2,0,TAU);
+  ctx.fillStyle="#fff";ctx.fill();
+ });
+ ctx.restore();
+}
+
+function handCenter(){
+ const hand=handResults?.multiHandLandmarks?.[0];
+ if(!hand)return{x:width()/2,y:height()/2,scale:1};
+ return{
+  x:(1-hand[9].x)*width(),y:hand[9].y*height(),
+  scale:Math.max(.55,Math.min(1.8,
+   Math.hypot(hand[5].x-hand[17].x,hand[5].y-hand[17].y)*5))
+ };
+}
+
+function drawShape(type,x,y,scale,time){
+ ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+ ctx.rotate(Math.sin(time*.7)*.08);ctx.beginPath();
+
+ switch(type){
+ case"heart":
+  ctx.moveTo(0,22);ctx.bezierCurveTo(-70,-20,-40,-65,0,-35);
+  ctx.bezierCurveTo(40,-65,70,-20,0,22);break;
+ case"star":
+  for(let i=0;i<10;i++){
+   const a=-Math.PI/2+i*Math.PI/5,r=i%2?23:55;
+   const px=Math.cos(a)*r,py=Math.sin(a)*r;
+   if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }ctx.closePath();break;
+ case"peace":
+  ctx.moveTo(0,48);ctx.lineTo(0,-50);ctx.moveTo(0,-4);
+  ctx.lineTo(-35,-48);ctx.moveTo(0,-4);ctx.lineTo(35,-48);break;
+ case"arrow":
+  ctx.moveTo(0,55);ctx.lineTo(0,-48);ctx.moveTo(-25,-20);
+  ctx.lineTo(0,-50);ctx.lineTo(25,-20);break;
+ case"ring":
+  ctx.arc(0,0,43,0,TAU);ctx.moveTo(22,0);ctx.arc(0,0,22,0,TAU);break;
+ case"diamond":
+  ctx.moveTo(0,-55);ctx.lineTo(42,0);ctx.lineTo(0,55);
+  ctx.lineTo(-42,0);ctx.closePath();break;
+ case"shield":
+  ctx.moveTo(0,-52);ctx.lineTo(43,-30);ctx.lineTo(35,24);
+  ctx.lineTo(0,55);ctx.lineTo(-35,24);ctx.lineTo(-43,-30);ctx.closePath();break;
+ case"mandala":
+  for(let i=0;i<12;i++){
+   const a=i*TAU/12;ctx.moveTo(Math.cos(a)*18,Math.sin(a)*18);
+   ctx.lineTo(Math.cos(a)*56,Math.sin(a)*56);
+  }ctx.arc(0,0,25,0,TAU);break;
+ case"wave":
+  for(let i=0;i<3;i++){
+   ctx.moveTo(-55,-20+i*20);
+   for(let j=0;j<=20;j++)ctx.lineTo(-55+j*5,-20+i*20+Math.sin(j*.45+time*2+i)*9);
+  }break;
+ case"bowl":
+  ctx.arc(0,-4,48,0,Math.PI);ctx.moveTo(-48,-4);ctx.lineTo(48,-4);break;
+ case"cross":
+  ctx.moveTo(-42,-42);ctx.lineTo(42,42);ctx.moveTo(42,-42);ctx.lineTo(-42,42);break;
+ case"call":
+  ctx.arc(0,0,38,.3,Math.PI-.3);ctx.moveTo(-43,-22);ctx.lineTo(-28,-40);
+  ctx.moveTo(43,-22);ctx.lineTo(28,-40);break;
+ case"double":
+  ctx.arc(-25,0,27,0,TAU);ctx.arc(25,0,27,0,TAU);break;
+ case"spiral":
+  for(let a=0;a<Math.PI*5;a+=.08){
+   const r=2+a*2,px=Math.cos(a)*r,py=Math.sin(a)*r;
+   if(a===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }break;
+ case"orb":
+  ctx.arc(0,0,35,0,TAU);ctx.ellipse(0,0,55,20,.6,0,TAU);
+  ctx.ellipse(0,0,55,20,-.6,0,TAU);break;
+ case"burst":
+  for(let i=0;i<16;i++){
+   const a=i*TAU/16;ctx.moveTo(Math.cos(a)*15,Math.sin(a)*15);
+   ctx.lineTo(Math.cos(a)*58,Math.sin(a)*58);
+  }break;
+ case"snap":
+  ctx.arc(0,0,15,0,TAU);
+  for(let i=0;i<8;i++){
+   const a=i*TAU/8;ctx.moveTo(Math.cos(a)*24,Math.sin(a)*24);
+   ctx.lineTo(Math.cos(a)*60,Math.sin(a)*60);
+  }break;
+ default:ctx.arc(0,0,45,0,TAU);
+ }
+ ctx.stroke();ctx.restore();
+}
+
+function render(now){
+ requestAnimationFrame(render);
+ if(paused)return;
+
+ const w=width(),h=height(),time=now*.001*Number($("speedRange").value);
+ ctx.globalCompositeOperation="source-over";
+ ctx.fillStyle=$("trailToggle").checked?"rgba(5,8,22,.22)":"rgba(5,8,22,1)";
+ ctx.fillRect(0,0,w,h);
+
+ if($("starsToggle").checked){
+  stars.forEach(s=>{
+   ctx.globalAlpha=s.a*(.5+.5*Math.sin(time+s.phase));
+   ctx.fillStyle="#b8dfff";ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,TAU);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+ }
+
+ const center=handCenter(),palette=colors();
+ const glow=Number($("glowRange").value)/100;
+ const style=$("shapeSelect").value;
+ const scale=center.scale*(1+.06*Math.sin(time*2));
+ const type=shapeFor[activeGesture]||"star";
+
+ ctx.save();ctx.globalCompositeOperation="lighter";
+ ctx.shadowBlur=22*glow;ctx.shadowColor=palette[0];
+ ctx.strokeStyle=palette[0];ctx.lineWidth=1.5;
+
+ if(style==="wire"){
+  for(let i=0;i<3;i++){
+   ctx.save();ctx.translate(center.x,center.y);
+   ctx.rotate(time*.3+i*TAU/3);
+   ctx.scale(scale*(.75+i*.18),scale*(.75+i*.18));
+   drawShape(type,0,0,1,time+i);ctx.restore();
+  }
+ }else if(style==="orbit"){
+  for(let i=0;i<5;i++){
+   ctx.beginPath();
+   ctx.ellipse(center.x,center.y,40*scale+i*13,18*scale+i*7,time*.3+i*.5,0,TAU);
+   ctx.strokeStyle=palette[i%3];ctx.stroke();
+  }
+ }else{
+  drawShape(type,center.x,center.y,scale*(style==="plasma"?1.4:1),time);
+ }
+
+ particles.forEach((p,i)=>{
+  const dx=center.x-p.x,dy=center.y-p.y,d=Math.hypot(dx,dy)+.01;
+  const angle=Math.atan2(dy,dx)+Math.sin(time+p.phase)*.8;
+  const force=Math.min(1.2,1100/(d*d+200));
+  p.vx+=Math.cos(angle)*force*.018;p.vy+=Math.sin(angle)*force*.018;
+  p.vx*=.985;p.vy*=.985;p.x+=p.vx;p.y+=p.vy;
+
+  if(p.x<0||p.x>w||p.y<0||p.y>h){p.x=random(0,w);p.y=random(0,h)}
+
+  ctx.globalAlpha=p.a*(.55+.45*Math.sin(time*2+p.phase));
+  ctx.fillStyle=palette[i%3];ctx.shadowBlur=glow*15;
+  ctx.beginPath();
+  ctx.arc(p.x,p.y,p.r*(Number($("sizeRange").value)/2),0,TAU);
+  ctx.fill();
+
+  if(style==="plasma"&&i%8===0){
+   ctx.strokeStyle=palette[i%3];ctx.globalAlpha=.12;
+   ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(center.x,center.y);ctx.stroke();
+  }
+ });
+
+ ctx.restore();ctx.globalAlpha=1;
+
+ if($("skeletonToggle").checked&&handResults?.multiHandLandmarks){
+  handResults.multiHandLandmarks.forEach(drawSkeleton);
+ }
+
+ frameCount++;
+ if(now-fpsStamp>1000){
+  $("fps").textContent="FPS "+Math.round(frameCount*1000/(now-fpsStamp));
+  frameCount=0;fpsStamp=now;
+ }
+}
+
+async function startCamera(){
+ if(running)return;
+ if(!navigator.mediaDevices?.getUserMedia){
+  toast("Kamera uchun HTTPS yoki localhost kerak.");return;
+ }
+ if(!window.Hands||!window.Camera){
+  toast("MediaPipe yuklanmadi. Internetni tekshiring.");return;
+ }
+
+ $("loading").hidden=false;
+
+ try{
+  const stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{facingMode:"user",width:{ideal:1280},height:{ideal:720}}
+  });
+
+  video.srcObject=stream;await video.play();
+
+  const hands=new Hands({
+   locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+
+  hands.setOptions({
+   maxNumHands:2,modelComplexity:1,
+   minDetectionConfidence:.65,minTrackingConfidence:.6
+  });
+
+  hands.onResults(onResults);
+
+  camera=new Camera(video,{
+   onFrame:async()=>{if(running)await hands.send({image:video})},
+   width:1280,height:720
+  });
+
+  running=true;await camera.start();
+
+  $("liveDot").classList.add("live");
+  $("statusText").textContent="CAMERA ONLINE";
+  $("startBtn").disabled=true;$("stopBtn").disabled=false;
+  $("loading").hidden=true;
+  toast("Kamera ishga tushdi!");
+
+ }catch(error){
+  console.error(error);$("loading").hidden=true;
+  toast("Kamera ochilmadi. Ruxsatlarni tekshiring.");
+  stopCamera();
+ }
+}
+
+function stopCamera(){
+ running=false;
+ if(camera){try{camera.stop()}catch(e){}camera=null}
+ if(video.srcObject){
+  video.srcObject.getTracks().forEach(track=>track.stop());
+  video.srcObject=null;
+ }
+ handResults=null;$("handCount").textContent="0";
+ $("liveDot").classList.remove("live");
+ $("statusText").textContent="CAMERA OFFLINE";
+ $("startBtn").disabled=false;$("stopBtn").disabled=true;
+ $("hint").style.display="grid";
+}
+
+function toast(message){
+ const el=$("toast");el.textContent=message;el.classList.add("show");
+ clearTimeout(toast.timer);
+ toast.timer=setTimeout(()=>el.classList.remove("show"),2600);
+}
+
+$("startBtn").onclick=startCamera;
+$("stopBtn").onclick=stopCamera;
+
+$("pauseBtn").onclick=()=>{
+ paused=!paused;
+ $("pauseBtn").textContent=paused?"▶ RESUME":"Ⅱ PAUSE";
+};
+
+$("clearBtn").onclick=()=>{
+ createParticles();
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ toast("Effektlar qayta yaratildi");
+};
+
+$("fullscreenBtn").onclick=()=>{
+ if(!document.fullscreenElement)stage.requestFullscreen?.();
+ else document.exitFullscreen?.();
+};
+
+$("particleRange").oninput=e=>{
+ $("particleValue").textContent=e.target.value;createParticles();
+};
+$("glowRange").oninput=e=>$("glowValue").textContent=e.target.value+"%";
+$("sizeRange").oninput=e=>$("sizeValue").textContent=Number(e.target.value).toFixed(1);
+$("speedRange").oninput=e=>$("speedValue").textContent=Number(e.target.value).toFixed(1)+"×";
+$("mirrorToggle").onchange=e=>{
+ video.style.transform=e.target.checked?"scaleX(-1)":"none";
+};
+
+window.addEventListener("resize",()=>{resize();createParticles()});
+window.addEventListener("beforeunload",stopCamera);
+
+buildPalette();
+buildGestures();
+resize();
+createParticles();
+requestAnimationFrame(render);
 </script>
 </body>
 </html>
