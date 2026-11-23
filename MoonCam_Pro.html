@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080b12">
+<title>MoonCam Pro</title>
+<style>
+:root{color-scheme:dark;--bg:#080b12;--panel:#121a27;--line:#29364a;--text:#edf3ff;--muted:#94a3b8;--accent:#8bd5ff;--gold:#f6d36b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -15%,#1d3550 0,#080b12 48%);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:18px 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{font-weight:800;letter-spacing:.08em}.brand span{color:var(--gold)}.sub{font-size:12px;color:var(--muted);margin-top:3px}
+main{max-width:760px;margin:auto;padding:0 12px 28px}
+.preview{position:relative;background:#000;border:1px solid var(--line);border-radius:18px;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center}
+video{width:100%;height:100%;object-fit:contain;background:#000}
+.crosshair{position:absolute;inset:0;pointer-events:none;opacity:.25;background:linear-gradient(90deg,transparent 49.8%,#fff 50%,transparent 50.2%),linear-gradient(0deg,transparent 49.8%,#fff 50%,transparent 50.2%)}
+.preview-note{position:absolute;left:12px;bottom:10px;background:#0009;padding:6px 9px;border-radius:8px;font-size:11px;color:#d7e4f4}
+.panel{background:linear-gradient(145deg,#151f2e,#0e1520);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.row.wrap{flex-wrap:wrap}
+button,select{font:inherit;color:var(--text);background:#1b2a3c;border:1px solid #34465e;border-radius:11px;padding:11px 13px}
+button:disabled{opacity:.45}button.primary{background:linear-gradient(135deg,#b6e6ff,#64b8e9);color:#07111c;border:0;font-weight:800}
+button.capture{width:72px;height:72px;border-radius:50%;border:5px solid #eaf5ff;background:#f7fbff;box-shadow:0 0 0 5px #ffffff22}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.control{background:#0c131e;border:1px solid #243247;border-radius:12px;padding:11px}
+.control label{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#cbd8e8}
+.control output{color:var(--gold);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);margin:13px 0 2px}
+.small{font-size:12px;color:var(--muted);line-height:1.5}.status{padding:10px 12px;border-radius:10px;background:#0b1420;color:#b9d7ec;font-size:13px;margin-top:10px;line-height:1.45}
+h2{font-size:15px;margin:0 0 12px}.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.shot{background:#05080d;border:1px solid var(--line);border-radius:10px;overflow:hidden}.shot img{width:100%;aspect-ratio:1;object-fit:cover;display:block}.shot a{display:block;text-align:center;color:var(--accent);font-size:12px;padding:7px;text-decoration:none}
+.pill{font-size:11px;color:#c6d5e7;border:1px solid #33465d;border-radius:30px;padding:5px 9px}
+@media(max-width:420px){.controls{grid-template-columns:1fr 1fr}.panel{padding:11px}}
+</style>
+</head>
+<body>
+<header>
+ <div><div class="brand">MOON<span>CAM</span> PRO</div><div class="sub">TECNO Spark 20 Pro · brauzer kamerasi</div></div>
+ <span class="pill" id="camState">Kamera ulanmagan</span>
+</header>
+<main>
+ <section class="preview">
+  <video id="video" autoplay playsinline muted></video>
+  <div class="crosshair"></div>
+  <div class="preview-note" id="previewNote">Kamerani yoqish uchun tugmani bosing</div>
+ </section>
+ <section class="panel">
+  <div class="row wrap">
+   <button class="primary" id="startBtn">Kamerani yoqish</button>
+   <button id="switchBtn" disabled>Kamerani almashtirish</button>
+   <select id="ratio"><option value="4:3">4:3</option><option value="16:9">16:9</option></select>
+  </div>
+  <div class="status" id="status">Kamera faqat HTTPS manzilda yoki localhost’da ishlaydi. Ruxsat so‘ralganda kameraga ruxsat bering.</div>
+ </section>
+ <section class="panel">
+  <h2>Qo‘lda sozlash</h2>
+  <div class="controls">
+   <div class="control"><label for="zoom">Zoom <output id="zoomVal">1.0×</output></label><input id="zoom" type="range" min="1" max="1" step=".1" value="1"><div class="small" id="zoomInfo">Qurilma imkoniyati aniqlanmoqda</div></div>
+   <div class="control"><label for="ev">EV <output id="evVal">0</output></label><input id="ev" type="range" min="-2" max="2" step=".1" value="0"><div class="small">Ekspozitsiya kompensatsiyasi</div></div>
+   <div class="control"><label for="iso">ISO <output id="isoVal">Avto</output></label><input id="iso" type="range" min="100" max="1600" step="100" value="100" disabled><div class="small" id="isoInfo">Brauzer qo‘llasa boshqariladi</div></div>
+   <div class="control"><label for="shutter">Shutter <output id="shutterVal">Avto</output></label><input id="shutter" type="range" min="1" max="1000" step="1" value="500" disabled><div class="small" id="shutterInfo">Brauzer qo‘llasa boshqariladi</div></div>
+   <div class="control"><label for="focus">Fokus <output id="focusVal">Avto</output></label><input id="focus" type="range" min="0" max="1" step=".01" value="1" disabled><div class="small" id="focusInfo">Manual fokus qurilmaga bog‘liq</div></div>
+   <div class="control"><label for="wb">WB <output id="wbVal">Avto</output></label><input id="wb" type="range" min="2500" max="7500" step="100" value="5000" disabled><div class="small" id="wbInfo">Rang harorati qurilmaga bog‘liq</div></div>
+  </div>
+  <div class="small" style="margin-top:10px">Eslatma: Android brauzerlari ko‘pincha ISO, shutter va WB’ni ochmaydi. Ilova mavjud bo‘lmagan boshqaruvni soxta tarzda ko‘rsatmaydi.</div>
+ </section>
+ <section class="panel">
+  <div class="row"><h2>Suratga olish</h2><span class="pill" id="captureMode">JPEG</span></div>
+  <div class="row" style="justify-content:center;gap:22px;padding:6px 0">
+   <button id="timerBtn">Taymer: 2 s</button><button class="capture" id="captureBtn" aria-label="Suratga olish" disabled></button><button id="gridBtn">To‘r: ON</button>
+  </div>
+  <div class="small">Telefonni tirgakka qo‘ying. Oyga fokuslang, ekspozitsiyani pasaytiring va taymer bilan oling.</div>
+  <div id="gallery" class="shots"></div>
+ </section>
+ <section class="panel">
+  <h2>Oy uchun boshlang‘ich tavsiya</h2>
+  <div class="small">Agar ISO va shutter boshqaruvi qurilmada ochilsa: ISO 100, 1/250–1/500 s oralig‘idan boshlang. Oy juda yorqin yoki oq dog‘ bo‘lsa, ekspozitsiyani pasaytiring. 3× raqamli yaqinlashtirish detallarni ko‘paytirmaydi; avval 1× va 3× natijani solishtiring.</div>
+ </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let stream=null, track=null, caps={}, settings={}, facing='environment', timer=2, grid=true, shotNo=0;
+const status=(s)=>$('status').textContent=s;
+function setState(s){$('camState').textContent=s}
+async function start(){
+ try{
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}}});
+  $('video').srcObject=stream; track=stream.getVideoTracks()[0];
+  caps=track.getCapabilities?track.getCapabilities():{}; settings=track.getSettings?track.getSettings():{};
+  $('captureBtn').disabled=false;$('switchBtn').disabled=false;
+  setState('Kamera faol');$('previewNote').textContent=(settings.width||'?')+' × '+(settings.height||'?');
+  configureControls();status('Kamera ulandi. Mavjud apparat boshqaruvlari aniqlanmoqda.');
+ }catch(e){setState('Xatolik');status('Kamera ochilmadi: '+e.message+'. HTTPS’dan foydalaning va brauzer sozlamalarida kamera ruxsatini tekshiring.');}
+}
+function rangeControl(id,capName,unit,format){
+ const el=$(id), val=$(id+'Val'), c=caps[capName];
+ if(!c){el.disabled=true;val.textContent='Avto';return;}
+ el.disabled=false;el.min=c.min;el.max=c.max;el.step=c.step||1;
+ const initial=(settings[capName]??c.min);el.value=Math.min(c.max,Math.max(c.min,initial));
+ val.textContent=format?format(Number(el.value)):Number(el.value)+unit;
+ el.oninput=async()=>{val.textContent=format?format(Number(el.value)):Number(el.value)+unit;await applyControl(capName,Number(el.value));};
+}
+function configureControls(){
+ if(caps.zoom){$('zoom').min=caps.zoom.min;$('zoom').max=caps.zoom.max;$('zoom').step=caps.zoom.step||.1;$('zoom').value=settings.zoom||caps.zoom.min;$('zoom').disabled=false;$('zoomVal').textContent=Number($('zoom').value).toFixed(1)+'×';$('zoomInfo').textContent='Optik/digital kamera zoom diapazoni';}else{$('zoom').disabled=true;$('zoomInfo').textContent='Zoom API mavjud emas';}
+ $('zoom').oninput=()=>{$('zoomVal').textContent=Number($('zoom').value).toFixed(1)+'×';applyControl('zoom',Number($('zoom').value));};
+ rangeControl('ev','exposureCompensation','',v=>(v>0?'+':'')+v.toFixed(1));
+ if(caps.iso){rangeControl('iso','iso','',v=>Math.round(v));$('isoInfo').textContent='ISO boshqaruvi mavjud';}else{$('isoInfo').textContent='Bu brauzer/kamera ISO’ni ochmadi';}
+ if(caps.exposureTime){rangeControl('shutter','exposureTime','',v=>'1/'+Math.round(1e6/v)+' s');$('shutterInfo').textContent='Ekspozitsiya vaqti mikrosekundda';}else{$('shutterInfo').textContent='Shutter boshqaruvi mavjud emas';}
+ if(caps.focusDistance){rangeControl('focus','focusDistance','',v=>v.toFixed(2));$('focusInfo').textContent='Fokus masofasi diapazoni mavjud';}else{$('focusInfo').textContent='Manual fokus API mavjud emas';}
+ if(caps.colorTemperature){rangeControl('wb','colorTemperature',' K',v=>Math.round(v)+' K');$('wbInfo').textContent='WB haroratini boshqarish mavjud';}else{$('wbInfo').textContent='WB boshqaruvi mavjud emas';}
+}
+async function applyControl(name,value){
+ try{await track.applyConstraints({advanced:[{[name]:value}]});}
+ catch(e){status(name+' boshqaruvini qo‘llab bo‘lmadi: '+e.message);}
+}
+$('startBtn').onclick=start;
+$('switchBtn').onclick=()=>{facing=facing==='environment'?'user':'environment';start();};
+$('captureBtn').onclick=async()=>{
+ if(!track)return;
+ $('captureBtn').disabled=true;
+ try{
+  if(timer){$('previewNote').textContent='Suratga olish: '+timer;await new Promise(r=>setTimeout(r,timer*1000));}
+  let blob;
+  if('ImageCapture' in window){
+   try{const ic=new ImageCapture(track);blob=await ic.takePhoto();}catch(e){}
+  }
+  if(!blob){
+   const v=$('video'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+   c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+   blob=await new Promise(resolve=>c.toBlob(resolve,'image/jpeg',.98));
+  }
+  if(!blob)throw new Error('Kadr olinmadi');
+  const url=URL.createObjectURL(blob),name='MoonCam_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';
+  const item=document.createElement('div');item.className='shot';
+  const img=document.createElement('img');img.src=url;img.alt='MoonCam surat';
+  const a=document.createElement('a');a.href=url;a.download=name;a.textContent='Saqlash ↓';
+  item.append(img,a);$('gallery').prepend(item);shotNo++;
+  $('previewNote').textContent='Surat olindi · '+(blob.type||'image/jpeg');
+  status('Surat tayyor. “Saqlash” tugmasi bilan telefoningizga yuklab oling.');
+ }catch(e){status('Suratga olishda xatolik: '+e.message);}
+ finally{$('captureBtn').disabled=false;}
+};
+$('timerBtn').onclick=()=>{timer=timer===0?2:timer===2?5:0;$('timerBtn').textContent='Taymer: '+(timer?timer+' s':'OFF');};
+$('gridBtn').onclick=()=>{grid=!grid;$('gridBtn').textContent='To‘r: '+(grid?'ON':'OFF');$('.crosshair').style.display=grid?'block':'none';};
+$('ev').addEventListener('input',()=>{$('evVal').textContent=Number($('ev').value).toFixed(1);});
+if(!navigator.mediaDevices?.getUserMedia){status('Bu brauzer kamera API’sini qo‘llamaydi. Android Chrome’da HTTPS orqali oching.');$('startBtn').disabled=true;}
+</script>
+</body>
+</html>
