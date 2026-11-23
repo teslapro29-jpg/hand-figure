@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070b12">
+<title>MoonCam Pro Ultimate</title>
+<style>
+:root{color-scheme:dark;--bg:#070b12;--panel:#101927;--panel2:#0b1320;--line:#26364b;--txt:#edf5ff;--muted:#91a4ba;--cyan:#8bdcff;--gold:#f4d477;--green:#8de0b2;--red:#ff9d9d}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -20%,#1c3854 0,#070b12 52%);color:var(--txt);font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
+header{max-width:900px;margin:auto;padding:17px 15px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px}.logo{font-weight:900;letter-spacing:.11em;font-size:18px}.logo b{color:var(--gold)}.tag{font-size:11px;color:var(--muted);margin-top:3px}.statuspill{border:1px solid var(--line);border-radius:30px;padding:6px 10px;font-size:11px;color:var(--muted)}
+main{max-width:900px;margin:auto;padding:0 12px 34px}.view{position:relative;background:#000;border:1px solid var(--line);border-radius:17px;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center}
+video{width:100%;height:100%;object-fit:contain;background:#000}.overlay{position:absolute;inset:0;pointer-events:none}.cross{background:linear-gradient(90deg,transparent 49.85%,#fff5 50%,transparent 50.15%),linear-gradient(0deg,transparent 49.85%,#fff5 50%,transparent 50.15%)}.aim{position:absolute;width:76px;height:76px;border:1px solid #bdeaff99;border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #0008}.aim:before,.aim:after{content:"";position:absolute;background:#bdeaff99}.aim:before{width:1px;height:100%;left:50%}.aim:after{height:1px;width:100%;top:50%}
+.viewinfo{position:absolute;left:10px;right:10px;bottom:9px;display:flex;justify-content:space-between;gap:8px;font-size:11px;text-shadow:0 1px 3px #000;background:#0007;padding:6px 8px;border-radius:8px}
+.panel{background:linear-gradient(145deg,#142033,#0c1420);border:1px solid var(--line);border-radius:15px;padding:13px;margin-top:11px}.head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:11px}.head h2{font-size:14px;margin:0;letter-spacing:.04em}.muted{color:var(--muted)}.tiny{font-size:11px;color:var(--muted);line-height:1.5}
+button,select{font:inherit;color:var(--txt);background:#1a2a3e;border:1px solid #344963;border-radius:10px;padding:10px 12px}button:disabled{opacity:.42}.primary{background:linear-gradient(135deg,#c0edff,#66bde9);color:#06111a;border:0;font-weight:850}.danger{border-color:#6b3940;color:#ffb7b7}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.grow{flex:1}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.ctl{padding:10px;background:var(--panel2);border:1px solid #22334a;border-radius:11px;min-width:0}.ctl label{display:flex;justify-content:space-between;gap:5px;font-size:12px;color:#d1dfed}.ctl output{color:var(--gold);font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--cyan);margin:11px 0 0}.switch{display:flex;align-items:center;gap:8px;font-size:13px}.switch input{accent-color:#70c8f1;width:18px;height:18px}.readout{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.metric{background:#09121d;border:1px solid #22334a;border-radius:10px;padding:9px}.metric strong{display:block;font-size:14px;color:var(--cyan);font-variant-numeric:tabular-nums}.metric span{font-size:10px;color:var(--muted)}
+.bigcapture{width:66px;height:66px;border-radius:50%;padding:0;background:#f5fbff;border:5px solid #e8f6ff;box-shadow:0 0 0 4px #ffffff28}.bigcapture:after{content:"";display:block;width:48px;height:48px;border:1px solid #26394b;border-radius:50%;margin:auto}
+.actions{display:flex;align-items:center;justify-content:center;gap:14px;padding:5px}.notice{background:#0a1724;border:1px solid #29435b;border-radius:10px;padding:10px;font-size:12px;line-height:1.5;color:#c1d8eb;margin-top:10px}.notice.warn{border-color:#6a5530;color:#f5dfab}.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.shot{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#05080c}.shot img{width:100%;aspect-ratio:1;object-fit:cover;display:block}.shot a{display:block;padding:7px;text-align:center;text-decoration:none;color:var(--cyan);font-size:11px}.meter{height:8px;background:#263447;border-radius:20px;overflow:hidden;margin-top:7px}.meter>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#73d6ff,#f6d477);border-radius:20px}
+@media(min-width:700px){.controls{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:380px){button,select{padding:9px}.controls{gap:7px}.panel{padding:10px}}
+</style>
+</head>
+<body>
+<header><div><div class="logo">MOON<b>CAM</b> PRO <span style="color:#8bdcff">ULTIMATE</span></div><div class="tag">Adaptive lunar photography · Android Chrome</div></div><span class="statuspill" id="state">OFFLINE</span></header>
+<main>
+<section class="view"><video id="video" autoplay muted playsinline></video><div class="overlay cross" id="grid"></div><div class="overlay"><div class="aim"></div></div><div class="viewinfo"><span id="resolution">Kamera ulanmagan</span><span id="moonState">Oy aniqlanmagan</span></div></section>
+<section class="panel">
+ <div class="row"><button class="primary grow" id="start">Kamerani yoqish</button><button id="flip" disabled>Old/orqa</button><button id="torch" disabled>Chiroq OFF</button></div>
+ <div class="notice" id="message">Avval HTTPS orqali oching va kameraga ruxsat bering. Ilova qurilmangiz taqdim etgan haqiqiy kamera parametrlarini aniqlaydi.</div>
+</section>
+<section class="panel">
+ <div class="head"><h2>ADAPTIVE MOON ENGINE</h2><span class="statuspill" id="autoState">AUTO: ON</span></div>
+ <div class="row" style="justify-content:space-between">
+  <label class="switch"><input type="checkbox" id="auto" checked> Oyni avtomatik aniqlash va ekspozitsiyani moslash</label>
+  <label class="switch"><input type="checkbox" id="lock"> Ekspozitsiyani qulflash</label>
+ </div>
+ <div style="margin-top:11px;font-size:11px;color:var(--muted)">Kadrdagi eng yorqin dumaloq obyekt tahlil qilinadi. Kamera ruxsat bergan taqdirdagina ekspozitsiya kompensatsiyasi avtomatik o‘zgaradi.</div>
+ <div class="meter"><i id="meterbar"></i></div>
+ <div class="readout" style="margin-top:9px">
+  <div class="metric"><strong id="brightness">—</strong><span>Oy yorqinligi</span></div>
+  <div class="metric"><strong id="diameter">—</strong><span>Taxminiy diametr</span></div>
+  <div class="metric"><strong id="evnow">—</strong><span>EV kompensatsiya</span></div>
+ </div>
+</section>
+<section class="panel">
+ <div class="head"><h2>PRO KAMERA BOSHQARUVI</h2><span class="statuspill" id="apiStatus">API tekshirilmoqda</span></div>
+ <div class="controls">
+  <div class="ctl"><label>Zoom <output id="zoomv">1.0×</output></label><input id="zoom" type="range" min="1" max="1" step=".1" value="1"></div>
+  <div class="ctl"><label>EV <output id="evv">0</output></label><input id="ev" type="range" min="-2" max="2" step=".1" value="0"></div>
+  <div class="ctl"><label>ISO <output id="isov">AUTO</output></label><input id="iso" type="range" min="100" max="3200" step="100" value="100" disabled></div>
+  <div class="ctl"><label>Shutter <output id="shv">AUTO</output></label><input id="shutter" type="range" min="1" max="1000" step="1" value="500" disabled></div>
+  <div class="ctl"><label>Fokus <output id="focusv">AUTO</output></label><input id="focus" type="range" min="0" max="1" step=".01" value="1" disabled></div>
+  <div class="ctl"><label>WB <output id="wbv">AUTO</output></label><input id="wb" type="range" min="2500" max="7500" step="100" value="5000" disabled></div>
+ </div>
+ <div class="row" style="margin-top:10px"><label class="switch"><input type="checkbox" id="gridcheck" checked> Kompozitsiya to‘ri</label><label class="switch"><input type="checkbox" id="torchcheck"> Chiroq</label><select id="timer"><option value="2">Taymer 2 s</option><option value="5">Taymer 5 s</option><option value="0">Taymer OFF</option></select></div>
+ <div class="tiny" style="margin-top:9px">ISO, shutter, fokus va WB slayderlari faqat brauzer hamda kamera API ularni ochsa ishlaydi. Bu parametrlar ko‘rinmasa, ilova ularni taqlid qilmaydi.</div>
+</section>
+<section class="panel">
+ <div class="head"><h2>HIGH-RES CAPTURE</h2><span class="statuspill" id="captureInfo">Kamera talablarini kutmoqda</span></div>
+ <div class="actions"><button id="burst">Burst ×5</button><button class="bigcapture" id="capture" aria-label="Suratga olish" disabled></button><button id="gridtoggle">To‘r ON</button></div>
+ <div class="notice warn"><b>108 MP haqida muhim:</b> brauzer 108 MP rejimini majburan yoqa olmaydi. Sensorning haqiqiy maksimal foto o‘lchami Android kamera drayveri va Chrome’ga ochilgan imkoniyatlarga bog‘liq. MoonCam eng yuqori mavjud foto o‘lchamini so‘raydi va olingan faylning real piksel o‘lchamini ko‘rsatadi; 108 MP deb soxta yozmaydi.</div>
+</section>
+<section class="panel"><div class="head"><h2>GALEREYA</h2><button id="clear">Tozalash</button></div><div class="gallery" id="gallery"></div><div class="tiny" style="margin-top:8px">Suratni saqlash uchun uning ostidagi “Yuklab olish” havolasini bosing.</div></section>
+<section class="panel"><h2>QURILMA VA CHEKLOVLAR</h2><div class="tiny" id="diagnostics">Kamera ulanmagan. Diagnostika kamera yoqilgach ko‘rinadi.</div></section>
+</main>
+<canvas id="analyzer" width="160" height="120" hidden></canvas>
+<script>
+(()=> {
+const $=id=>document.getElementById(id);let stream=null,track=null,caps={},settings={},facing='environment',timer=2,autoTimer=null,lastEV=null,photoCaps=null,shotCount=0,torchOn=false;
+const say=t=>$('message').textContent=t;
+const fmt=(n,d=1)=>Number(n).toFixed(d);
+function setState(t){$('state').textContent=t}
+async function stop(){if(autoTimer)clearInterval(autoTimer);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;track=null}
+async function start(){
+ try{
+  await stop();
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:30}}});
+  $('video').srcObject=stream;track=stream.getVideoTracks()[0];settings=track.getSettings?.()||{};caps=track.getCapabilities?.()||{};
+  $('capture').disabled=false;$('flip').disabled=false;$('torch').disabled=!caps.torch;
+  setState('CAMERA ACTIVE');$('resolution').textContent=(settings.width||'?')+' × '+(settings.height||'?')+' live';
+  configure();await getPhotoCapabilities();diagnostics();
+  say('Kamera ishga tushdi. Adaptive Moon Engine yorqin obyektni tahlil qilmoqda. Oyni kadr markaziga yaqin tuting.');
+  if($('auto').checked)startAuto();
+ }catch(e){setState('CAMERA ERROR');say('Kamera ochilmadi: '+e.message+'. Chrome’da kamera ruxsatini bering va sahifani HTTPS orqali oching.');}
+}
+function bindRange(id,key,out,formatter){
+ const el=$(id),o=$(out),c=caps[key];
+ if(!c){el.disabled=true;o.textContent='AUTO';return}
+ el.disabled=false;el.min=c.min;el.max=c.max;el.step=c.step||1;let v=settings[key]??c.min;el.value=Math.max(c.min,Math.min(c.max,v));o.textContent=formatter(Number(el.value));
+ el.oninput=()=>{o.textContent=formatter(Number(el.value));apply(key,Number(el.value));};
+}
+async function apply(key,value){try{await track.applyConstraints({advanced:[{[key]:value}]});}catch(e){say('Kamera '+key+' parametrini qo‘llamadi: '+e.message)}}
+function configure(){
+ if(caps.zoom){$('zoom').disabled=false;$('zoom').min=caps.zoom.min;$('zoom').max=caps.zoom.max;$('zoom').step=caps.zoom.step||.1;$('zoom').value=settings.zoom||caps.zoom.min;$('zoomv').textContent=fmt($('zoom').value)+'×';$('zoom').oninput=()=>{$('zoomv').textContent=fmt($('zoom').value)+'×';apply('zoom',Number($('zoom').value))}}
+ else{$('zoom').disabled=true;$('zoomv').textContent='N/A'}
+ bindRange('ev','exposureCompensation','evv',v=>(v>0?'+':'')+fmt(v));
+ bindRange('iso','iso','isov',v=>Math.round(v));
+ bindRange('shutter','exposureTime','shv',v=>'1/'+Math.round(1e6/v)+' s');
+ bindRange('focus','focusDistance','focusv',v=>fmt(v,2));
+ bindRange('wb','colorTemperature','wbv',v=>Math.round(v)+' K');
+ $('apiStatus').textContent='API: '+Object.keys(caps).join(', ').slice(0,48);
+}
+async function getPhotoCapabilities(){
+ try{if('ImageCapture'in window){const ic=new ImageCapture(track);photoCaps=await ic.getPhotoCapabilities();$('captureInfo').textContent=photoCaps.imageWidth?.max+' × '+photoCaps.imageHeight?.max+' max photo';}else{$('captureInfo').textContent='Video frame fallback';}}
+ catch(e){$('captureInfo').textContent='Max photo API unavailable'}
+}
+function diagnostics(){
+ const c=track.getCapabilities?.()||{},s=track.getSettings?.()||{};
+ $('diagnostics').textContent='Live stream: '+s.width+'×'+s.height+'. Photo API: '+('ImageCapture'in window?'mavjud':'mavjud emas')+'. Kamera ochgan boshqaruvlar: '+(Object.keys(c).join(', ')||'brauzer tomonidan berilmagan')+'. Device label: '+(track.label||'noma’lum')+'.';
+}
+function startAuto(){if(autoTimer)clearInterval(autoTimer);autoTimer=setInterval(analyzeFrame,700);$('autoState').textContent='AUTO: ON'}
+function stopAuto(){$('autoState').textContent='AUTO: OFF';if(autoTimer)clearInterval(autoTimer);autoTimer=null}
+function analyzeFrame(){
+ if(!track||!$('auto').checked||$('lock').checked)return;
+ const v=$('video');if(!v.videoWidth)return;
+ const c=$('analyzer'),ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(v,0,0,c.width,c.height);
+ const data=ctx.getImageData(0,0,c.width,c.height).data;let max=0,sum=0,n=0,bx=0,by=0,bright=0;
+ // Sample center 70% of frame, find brightest small region; robust enough for a bright moon against dark sky.
+ for(let y=8;y<c.height-8;y+=2)for(let x=8;x<c.width-8;x+=2){let i=(y*c.width+x)*4;let lum=.2126*data[i]+.7152*data[i+1]+.0722*data[i+2];sum+=lum;n++;if(lum>max){max=lum;bx=x;by=y}}
+ // local disk estimate around brightest point
+ let vals=[];for(let y=Math.max(0,by-9);y<Math.min(c.height,by+10);y++)for(let x=Math.max(0,bx-9);x<Math.min(c.width,bx+10);x++){let i=(y*c.width+x)*4;vals.push(.2126*data[i]+.7152*data[i+1]+.0722*data[i+2])}
+ bright=vals.reduce((a,b)=>a+b,0)/(vals.length||1);
+ let bg=sum/(n||1),isMoon=max>105&&bright>55&&max-bg>35;
+ $('moonState').textContent=isMoon?'Yorqin obyekt topildi':'Oy aniqlanmadi';
+ $('brightness').textContent=isMoon?Math.round(bright)+'/255':'—';$('diameter').textContent=isMoon?'markaziy nuqta':'—';
+ $('meterbar').style.width=Math.min(100,bright/255*100)+'%';
+ if(isMoon&&caps.exposureCompensation){
+   const r=caps.exposureCompensation,mid=Math.max(r.min,Math.min(r.max,-1.2));
+   // Auto mode uses conservative negative EV only when bright central target clips.
+   const target=bright>225?-2:bright>190?-1.5:bright>155?-1:bright>120?-.5:0;
+   const ev=Math.max(r.min,Math.min(r.max,target));
+   if(lastEV===null||Math.abs(ev-lastEV)>=.4){lastEV=ev;apply('exposureCompensation',ev);$('ev').value=ev;$('evv').textContent=fmt(ev);$('evnow').textContent=fmt(ev)}
+ }else{$('evnow').textContent=caps.exposureCompensation?'0':'N/A'}
+}
+async function takeOne(){
+ if(!track)throw Error('Kamera ulanmagan');
+ let blob=null,w=0,h=0;
+ if('ImageCapture'in window){try{const ic=new ImageCapture(track);blob=await ic.takePhoto();const bm=await createImageBitmap(blob);w=bm.width;h=bm.height;bm.close()}catch(e){}}
+ if(!blob){const v=$('video'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0,c.width,c.height);w=c.width;h=c.height;blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.98))}
+ if(!blob)throw Error('Surat olinmadi');
+ const url=URL.createObjectURL(blob),name='MoonCam_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';
+ const wrap=document.createElement('div');wrap.className='shot';const img=document.createElement('img');img.src=url;img.alt='Moon photo';const a=document.createElement('a');a.href=url;a.download=name;a.textContent='Yuklab olish · '+w+'×'+h;wrap.append(img,a);$('gallery').prepend(wrap);shotCount++;
+ $('resolution').textContent='Photo: '+w+' × '+h+' · '+(blob.size/1048576).toFixed(2)+' MB';
+ $('captureInfo').textContent=w+' × '+h+' actual photo';
+}
+async function capture(burst=1){
+ $('capture').disabled=true;
+ try{const t=Number($('timer').value);if(t){say('Taymer: '+t+' soniya. Telefonni qimirlatmang.');await new Promise(r=>setTimeout(r,t*1000))}
+ for(let i=0;i<burst;i++){await takeOne();if(burst>1&&i<burst-1)await new Promise(r=>setTimeout(r,250))}
+ say(burst>1?burst+' ta kadr olindi. Galereyadan saqlang.':'Surat olindi. Real piksel o‘lchami yuqorida ko‘rsatilgan.');}
+ catch(e){say('Suratga olishda xatolik: '+e.message)}
+ finally{$('capture').disabled=false}
+}
+$('start').onclick=start;$('flip').onclick=()=>{facing=facing==='environment'?'user':'environment';start()};
+$('capture').onclick=()=>capture(1);$('burst').onclick=()=>capture(5);
+$('auto').onchange=()=>{$('auto').checked?startAuto():stopAuto()};
+$('lock').onchange=()=>{if(!$('lock').checked&&$('auto').checked)startAuto()};
+$('gridcheck').onchange=()=>{$('grid').style.display=$('gridcheck').checked?'block':'none'};
+$('gridtoggle').onclick=()=>{$('gridcheck').checked=!$('gridcheck').checked;$('grid').style.display=$('gridcheck').checked?'block':'none';$('gridtoggle').textContent='To‘r '+($('gridcheck').checked?'ON':'OFF')};
+$('torchcheck').onchange=async()=>{if(!caps.torch){say('Bu kamera torch boshqaruvini bermadi');return}torchOn=$('torchcheck').checked;try{await track.applyConstraints({advanced:[{torch:torchOn}]});$('torch').textContent='Chiroq '+(torchOn?'ON':'OFF')}catch(e){say('Chiroqni yoqib bo‘lmadi') }};
+$('torch').onclick=()=>{$('torchcheck').checked=!$('torchcheck').checked;$('torchcheck').dispatchEvent(new Event('change'))};
+$('clear').onclick=()=>{$('gallery').replaceChildren();shotCount=0};
+if(!navigator.mediaDevices?.getUserMedia){$('start').disabled=true;say('Brauzer kamera API’sini qo‘llamaydi. Android Chrome va HTTPS kerak.')}
+})();
+</script>
+</body></html>
