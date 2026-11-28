@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#05060d">
 <title>Hand Control Magic</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--bg:#05060d;--fg:#f4f1ff;--glass:rgba(18,14,30,.62)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -60,7 +65,7 @@ button:focus-visible{outline:2px solid #ffd24a;outline-offset:2px}
   <div id="msg"></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
 <script>
 (()=>{
@@ -403,6 +408,7 @@ $('#shape').onclick=()=>nextShape();$('#color').onclick=nextColor;
 $('#cam').onclick=async()=>{if(!hands)return;facing=facing==='user'?'environment':'user';
  try{await openCam();toast(mir?'📷 Old kamera':'📷 Orqa kamera')}catch(e){facing=facing==='user'?'environment':'user';openCam().catch(()=>{});toast('Kamera almashmadi')}};
 $('#skel').onclick=e=>{showSk=!showSk;e.currentTarget.classList.toggle('on',showSk)};
+if('serviceWorker' in navigator)addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});navigator.storage&&navigator.storage.persist&&navigator.storage.persist()});
 })();
 </script>
 </body>
